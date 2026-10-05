@@ -526,13 +526,236 @@ describe('Single report', function () {
   })
 
   describe('Unsupported events', function () {
-    it('Fail by throwing appropriate error', async () => {
+    function mockContinueOnError(value: string): void {
+      mockCore.getInput.mockImplementation(key =>
+        key === 'continue-on-error' ? value : getInput(key)
+      )
+    }
+
+    it('logs an error when continue-on-error is true', async () => {
+      mockContinueOnError('true')
       initContext('pr_review', {})
-      mockCore.setFailed.mockImplementation(c => {
-        expect(c).toEqual('The event pr_review is not supported.')
+
+      await action.action()
+
+      expect(mockCore.setFailed).not.toHaveBeenCalled()
+      expect(mockCore.error.mock.calls[0][0].message).toEqual(
+        'The event pr_review is not supported.'
+      )
+      expect(createCheck).not.toHaveBeenCalled()
+    })
+
+    it('fails the action when continue-on-error is false', async () => {
+      mockContinueOnError('false')
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      mockCore.setFailed.mockImplementation(() => {})
+      initContext('pr_review', {})
+
+      await action.action()
+
+      expect(mockCore.setFailed.mock.calls[0][0].message).toEqual(
+        'The event pr_review is not supported.'
+      )
+    })
+  })
+
+  describe('No report matched', function () {
+    function mockInputs(continueOnError: string): void {
+      mockCore.getInput.mockImplementation(key => {
+        switch (key) {
+          case 'paths':
+            return './__tests__/__fixtures__/does-not-exist/*.xml'
+          case 'continue-on-error':
+            return continueOnError
+          default:
+            return getInput(key)
+        }
+      })
+    }
+
+    it('fails the action when continue-on-error is false', async () => {
+      mockInputs('false')
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      mockCore.setFailed.mockImplementation(() => {})
+      initContext('pull_request', PR_PAYLOAD)
+
+      await action.action()
+
+      expect(mockCore.setFailed.mock.calls[0][0].message).toContain(
+        'No JaCoCo report matched paths'
+      )
+      expect(createCheck).not.toHaveBeenCalled()
+    })
+
+    it('logs an error when continue-on-error is true', async () => {
+      mockInputs('true')
+      initContext('pull_request', PR_PAYLOAD)
+
+      await action.action()
+
+      expect(mockCore.setFailed).not.toHaveBeenCalled()
+      expect(mockCore.error.mock.calls[0][0].message).toContain(
+        'No JaCoCo report matched paths'
+      )
+      expect(createCheck).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('SHA resolution', function () {
+    let compareCommits
+
+    beforeEach(() => {
+      compareCommits = jest.fn(() => compareCommitsResponse)
+      mockGithub.getOctokit.mockReturnValue({
+        rest: {
+          repos: {compareCommits},
+          checks: {create: createCheck},
+        },
+      })
+    })
+
+    it('workflow_run without pull requests uses the run head sha', async () => {
+      mockContext.sha = 'default-branch-sha'
+      initContext('workflow_run', {
+        workflow_run: {pull_requests: [], head_sha: 'run-head-sha'},
       })
 
       await action.action()
+
+      expect(compareCommits).toHaveBeenCalledWith(
+        expect.objectContaining({
+          base: 'default-branch-sha',
+          head: 'run-head-sha',
+        })
+      )
+      expect(createCheck.mock.calls[0][0].head_sha).toEqual('run-head-sha')
+    })
+
+    it('first push of a branch compares against the default branch', async () => {
+      initContext('push', {
+        before: '0000000000000000000000000000000000000000',
+        after: 'head-sha-from-push',
+        repository: {default_branch: 'main'},
+      })
+
+      await action.action()
+
+      expect(compareCommits).toHaveBeenCalledWith(
+        expect.objectContaining({base: 'main', head: 'head-sha-from-push'})
+      )
+    })
+
+    it('workflow_dispatch uses head-sha and base-sha inputs', async () => {
+      mockCore.getInput.mockImplementation(key => {
+        switch (key) {
+          case 'head-sha':
+            return 'custom-head-sha'
+          case 'base-sha':
+            return 'custom-base-sha'
+          default:
+            return getInput(key)
+        }
+      })
+      initContext('workflow_dispatch', {})
+
+      await action.action()
+
+      expect(compareCommits).toHaveBeenCalledWith(
+        expect.objectContaining({
+          base: 'custom-base-sha',
+          head: 'custom-head-sha',
+        })
+      )
+      expect(createCheck.mock.calls[0][0].head_sha).toEqual('custom-head-sha')
+    })
+  })
+
+  describe('Changed files', function () {
+    const MATH_FILE = compareCommitsResponse.data.files[0]
+
+    function filler(count: number): unknown[] {
+      return Array.from({length: count}, (_, i) => ({
+        filename: `docs/file${i}.md`,
+        blob_url: `https://github.com/o/r/blob/sha/docs/file${i}.md`,
+        status: 'modified',
+        changes: 1,
+        patch: '@@ -1,1 +1,1 @@\n-a\n+b',
+      }))
+    }
+
+    it('lists the pull request files when the comparison hits the 300 file limit', async () => {
+      const listFiles = jest.fn()
+      const paginate = jest.fn(async () => [MATH_FILE])
+      mockGithub.getOctokit.mockReturnValue({
+        paginate,
+        rest: {
+          repos: {
+            compareCommits: jest.fn(() => ({data: {files: filler(300)}})),
+          },
+          pulls: {listFiles},
+          checks: {create: createCheck},
+        },
+      })
+      initContext('pull_request', PR_PAYLOAD)
+
+      await action.action()
+
+      expect(paginate).toHaveBeenCalledWith(
+        listFiles,
+        expect.objectContaining({pull_number: 45, per_page: 100})
+      )
+      expect(checkSummary()).toContain('Math.kt')
+    })
+
+    it('warns when the comparison hits the 300 file limit without a pull request', async () => {
+      mockGithub.getOctokit.mockReturnValue({
+        rest: {
+          repos: {
+            compareCommits: jest.fn(() => ({data: {files: filler(300)}})),
+          },
+          checks: {create: createCheck},
+        },
+      })
+      initContext('push', {before: 'base-sha', after: 'head-sha'})
+
+      await action.action()
+
+      expect(
+        mockCore.warning.mock.calls.some(call =>
+          String(call[0]).includes('300')
+        )
+      ).toBe(true)
+    })
+
+    it('warns when a changed file has no patch', async () => {
+      mockGithub.getOctokit.mockReturnValue({
+        rest: {
+          repos: {
+            compareCommits: jest.fn(() => ({
+              data: {
+                files: [
+                  {
+                    filename: 'src/main/java/Big.java',
+                    blob_url: 'https://github.com/o/r/blob/sha/Big.java',
+                    status: 'modified',
+                    changes: 5000,
+                  },
+                ],
+              },
+            })),
+          },
+          checks: {create: createCheck},
+        },
+      })
+      initContext('pull_request', PR_PAYLOAD)
+
+      await action.action()
+
+      expect(
+        mockCore.warning.mock.calls.some(call =>
+          String(call[0]).includes('src/main/java/Big.java')
+        )
+      ).toBe(true)
     })
   })
 
@@ -571,6 +794,14 @@ describe('Single report', function () {
     })
   })
 })
+
+const PR_PAYLOAD = {
+  pull_request: {
+    number: 45,
+    base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
+    head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
+  },
+}
 
 function initContext(eventName, payload): void {
   mockContext.eventName = eventName
