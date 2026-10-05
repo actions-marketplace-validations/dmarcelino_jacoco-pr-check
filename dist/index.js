@@ -28685,6 +28685,14 @@ function error(message, properties = {}) {
     issueCommand('error', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 /**
+ * Adds a warning issue
+ * @param message warning issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
+ */
+function warning(message, properties = {}) {
+    issueCommand('warning', toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+/**
  * Writes info to log with console.log.
  * @param message info message
  */
@@ -44080,6 +44088,9 @@ function getChangedLines(patch) {
                 if (diffGroup) {
                     let bX = parseInt(diffGroup[2]);
                     for (const line of group) {
+                        // "\ No newline at end of file" is a marker, not a line of the file
+                        if (line.startsWith('\\'))
+                            continue;
                         bX++;
                         if (line.startsWith('+')) {
                             lineNumbers.add(bX - 1);
@@ -44186,6 +44197,14 @@ function getPackage(obj) {
         counter: getCounter(pkg),
     }));
 }
+function getGroup(obj) {
+    return obj.group?.map((grp) => ({
+        name: grp['$'].name,
+        group: getGroup(grp),
+        package: getPackage(grp),
+        counter: getCounter(grp),
+    }));
+}
 function getCounter(obj) {
     return obj.counter?.map((c) => ({
         type: c['$'].type,
@@ -44201,15 +44220,7 @@ function convertObjToReport(obj) {
             start: Number(si['$'].start),
             dump: Number(si['$'].dump),
         })),
-        group: obj.group?.map((grp) => ({
-            name: grp['$'].name,
-            group: grp.group?.map((g) => ({
-                name: g['$'].name,
-                counter: getCounter(g),
-            })),
-            package: getPackage(grp),
-            counter: getCounter(grp),
-        })),
+        group: getGroup(obj),
         package: getPackage(obj),
         counter: getCounter(obj),
     };
@@ -44218,8 +44229,9 @@ function convertObjToReport(obj) {
 function getProjectCoverage(reports, changedFiles, coverageCounterType = 'INSTRUCTION', showAllModules = false) {
     const moduleCoverages = [];
     const modules = getModulesFromReports(reports);
+    const changedFilesByModule = assignChangedFiles(modules, changedFiles);
     for (const module of modules) {
-        const files = getFileCoverageFromPackages(module.packages, changedFiles, coverageCounterType);
+        const files = getFileCoverage(module.sourceFiles, changedFilesByModule.get(module) ?? [], coverageCounterType);
         if (files.length !== 0) {
             const moduleCoverage = getModuleCoverage(module.root, coverageCounterType);
             const changedCoverage = getCoverage(files);
@@ -44264,14 +44276,10 @@ function toFloat$1(value) {
 function getModulesFromReports(reports) {
     const modules = [];
     for (const report of reports) {
-        const groupTag = report.group;
-        if (groupTag) {
-            const groups = groupTag.filter(group => group !== undefined);
-            for (const group of groups) {
-                const module = getModuleFromParent(group, report.filePath);
-                if (module) {
-                    modules.push(module);
-                }
+        for (const group of getAllGroups(report.group ?? [])) {
+            const module = getModuleFromParent(group, report.filePath);
+            if (module) {
+                modules.push(module);
             }
         }
         const module = getModuleFromParent(report, report.filePath);
@@ -44282,12 +44290,60 @@ function getModulesFromReports(reports) {
     disambiguateModuleNames(modules);
     return modules;
 }
+function getAllGroups(groups) {
+    return groups.flatMap(group => [group, ...getAllGroups(group.group ?? [])]);
+}
+function getSourcePath(file) {
+    return file.packageName ? `${file.packageName}/${file.name}` : file.name;
+}
+function isSourceOf(file, changedFile) {
+    const sourcePath = getSourcePath(file);
+    return (changedFile.filePath === sourcePath ||
+        changedFile.filePath.endsWith(`/${sourcePath}`));
+}
+/**
+ * Assigns each changed file to the modules that have its source. When the
+ * same source path exists in several modules, the modules whose directory
+ * contains the changed file win; aggregate reports, whose directory does not
+ * contain the sources, keep every match.
+ */
+function assignChangedFiles(modules, changedFiles) {
+    const assigned = new Map();
+    for (const changedFile of changedFiles) {
+        let candidates = modules.filter(module => module.sourceFiles.some(file => isSourceOf(file, changedFile)));
+        if (candidates.length > 1) {
+            const containing = candidates.filter(module => isUnderModuleDirectory(module, changedFile));
+            if (containing.length !== 0)
+                candidates = containing;
+        }
+        for (const module of candidates) {
+            assigned.set(module, [...(assigned.get(module) ?? []), changedFile]);
+        }
+    }
+    return assigned;
+}
+function isUnderModuleDirectory(module, changedFile) {
+    const modulePath = module.filePath
+        ? getModulePathFromFilePath(module.filePath)
+        : null;
+    if (!modulePath)
+        return false;
+    const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+    const directory = path$1
+        .relative(workspace, modulePath)
+        .split(path$1.sep)
+        .join('/');
+    if (!directory || directory.startsWith('..') || path$1.isAbsolute(directory)) {
+        return false;
+    }
+    return changedFile.filePath.startsWith(`${directory}/`);
+}
 function getModuleFromParent(parent, filePath) {
     const packages = parent.package;
     if (packages && packages.length !== 0) {
         return {
             name: parent.name,
-            packages,
+            sourceFiles: getFilesWithCoverage(packages),
             root: parent,
             filePath,
         };
@@ -44351,15 +44407,11 @@ function getCommonPrefix(paths) {
         return '';
     return segments[0].slice(0, commonEnd).join('/') + '/';
 }
-function getFileCoverageFromPackages(packages, files, coverageCounterType) {
+function getFileCoverage(jacocoFiles, files, coverageCounterType) {
     const resultFiles = [];
-    const jacocoFiles = getFilesWithCoverage(packages);
     for (const jacocoFile of jacocoFiles) {
         const name = jacocoFile.name;
-        const packageName = jacocoFile.packageName;
-        const githubFile = files.find(function (f) {
-            return f.filePath.endsWith(`${packageName}/${name}`);
-        });
+        const githubFile = files.find(f => isSourceOf(jacocoFile, f));
         if (githubFile) {
             const counter = jacocoFile.counters.find(c => c.name === coverageCounterType.toLowerCase());
             if (counter) {
@@ -44499,8 +44551,8 @@ function getReport(project, minCoverage, emoji, showMissingLines = false, covera
     if (!project.overall) {
         return coverageAbsent;
     }
-    const overallTable = getOverallTable(project.overall, project.changed, minCoverage, emoji);
-    const moduleTable = getModuleTable(project.modules, minCoverage, emoji);
+    const overallTable = getOverallTable(project.overall, project.changed, minCoverage, emoji, coverageCounterType);
+    const moduleTable = getModuleTable(project.modules, minCoverage, emoji, coverageCounterType);
     const filesTable = getFileTable(project, minCoverage, emoji, showMissingLines, coverageCounterType);
     const tables = project.modules.length === 0
         ? coverageAbsent
@@ -44510,12 +44562,12 @@ function getReport(project, minCoverage, emoji, showMissingLines = false, covera
     return `${overallTable}\n\n${tables}`;
 }
 const MODULE_COLLAPSE_THRESHOLD = 10;
-function getModuleTable(modules, minCoverage, emoji) {
+function getModuleTable(modules, minCoverage, emoji, coverageCounterType) {
     const tableHeader = '|Module|Coverage||';
     const tableStructure = '|:-|:-|:-:|';
     let table = `${tableHeader}\n${tableStructure}`;
     for (const module of modules) {
-        const coverageDifference = getCoverageDifference(module.overall, module.changed);
+        const coverageDifference = getCoverageDifference(module.overall, module.changed, coverageCounterType);
         renderRow(module.name, module.overall.percentage, coverageDifference, module.changed?.percentage ?? null);
     }
     if (modules.length > MODULE_COLLAPSE_THRESHOLD) {
@@ -44549,7 +44601,7 @@ function getFileTable(project, minCoverage, emoji, showMissingLines, coverageCou
             if (index !== 0) {
                 moduleName = '';
             }
-            const coverageDifference = getCoverageDifference(file.overall, file.changed);
+            const coverageDifference = getCoverageDifference(file.overall, file.changed, coverageCounterType);
             renderRow(moduleName, file, coverageDifference, file.changed?.percentage ?? null, project.isMultiModule);
         }
     }
@@ -44618,9 +44670,13 @@ function isLineMissed(line, coverageCounterType) {
     }
     return line.instruction.covered === 0 && line.instruction.missed > 0;
 }
-function getCoverageDifference(overall, changed) {
-    if (!changed)
+// Changed-line coverage of these counters is measured in instructions, so it
+// cannot be compared with their overall coverage
+const COUNTERS_WITHOUT_DELTA = ['COMPLEXITY', 'METHOD'];
+function getCoverageDifference(overall, changed, coverageCounterType) {
+    if (!changed || COUNTERS_WITHOUT_DELTA.includes(coverageCounterType)) {
         return null;
+    }
     const totalInstructions = overall.covered + overall.missed;
     const missed = changed.missed;
     const changedPercentage = (missed / totalInstructions) * 100;
@@ -44630,9 +44686,9 @@ function getCoverageDifference(overall, changed) {
     else
         return null;
 }
-function getOverallTable(overall, changed, minCoverage, emoji) {
+function getOverallTable(overall, changed, minCoverage, emoji, coverageCounterType) {
     const overallStatus = getStatus(overall.percentage, minCoverage.overall, emoji);
-    const coverageDifference = getCoverageDifference(overall, changed);
+    const coverageDifference = getCoverageDifference(overall, changed, coverageCounterType);
     let coveragePercentage = `${formatCoverage(overall.percentage)}`;
     if (shouldShow(coverageDifference)) {
         coveragePercentage += ` **\`${formatCoverage(coverageDifference)}\`**`;
@@ -44646,10 +44702,7 @@ function getOverallTable(overall, changed, minCoverage, emoji) {
     if (totalChangedLines !== 0) {
         const changedLinesPercentage = (coveredLines / totalChangedLines) * 100;
         const changedLinesStatus = getStatus(changedLinesPercentage, minCoverage.changed, emoji);
-        changedCoverageRow =
-            '\n' +
-                `|Changed lines|${formatCoverage(changedLinesPercentage)}|${changedLinesStatus}|` +
-                '\n<br>';
+        changedCoverageRow = `\n|Changed lines|${formatCoverage(changedLinesPercentage)}|${changedLinesStatus}|`;
     }
     return `${tableHeader}\n${tableStructure}${changedCoverageRow}`;
 }
@@ -44677,8 +44730,6 @@ function formatCoverage(coverage) {
 function toFloat(value) {
     return parseFloat(value.toFixed(2));
 }
-
-var processorsExports = requireProcessors();
 
 const VALID_COVERAGE_COUNTER_TYPES = [
     'INSTRUCTION',
@@ -44709,35 +44760,68 @@ function parseInputs() {
         setFailed(`'coverage-counter-type' ${coverageCounterType} is invalid. Valid values: ${VALID_COVERAGE_COUNTER_TYPES.join(', ')}`);
         return undefined;
     }
-    return {
-        token,
-        reportPaths: pathsString.split(','),
-        minCoverage: {
-            overall: parseFloat(getInput('min-coverage-overall')),
-            changed: parseFloat(getInput('min-coverage-changed-lines')),
-        },
-        checkName: getInput('check-name'),
-        prNumber: getInput('pr-number'),
-        headSha: getInput('head-sha'),
-        baseSha: getInput('base-sha'),
-        showAllModules: processorsExports.parseBooleans(getInput('show-all-modules')),
-        showMissingLines: processorsExports.parseBooleans(getInput('show-missing-lines')),
-        emoji: {
-            pass: getInput('pass-emoji'),
-            fail: getInput('fail-emoji'),
-        },
-        continueOnError: processorsExports.parseBooleans(getInput('continue-on-error')),
-        debugMode: processorsExports.parseBooleans(getInput('debug-mode')),
-        coverageCounterType,
-        failCheckBelowThreshold: processorsExports.parseBooleans(getInput('fail-check-below-threshold')),
-    };
+    try {
+        return {
+            token,
+            reportPaths: pathsString.split(','),
+            minCoverage: {
+                overall: getPercentageInput('min-coverage-overall'),
+                changed: getPercentageInput('min-coverage-changed-lines'),
+            },
+            checkName: getInput('check-name'),
+            prNumber: getInput('pr-number'),
+            headSha: getInput('head-sha'),
+            baseSha: getInput('base-sha'),
+            showAllModules: getBooleanInput('show-all-modules'),
+            showMissingLines: getBooleanInput('show-missing-lines'),
+            emoji: {
+                pass: getInput('pass-emoji'),
+                fail: getInput('fail-emoji'),
+            },
+            continueOnError: getBooleanInput('continue-on-error'),
+            debugMode: getBooleanInput('debug-mode'),
+            coverageCounterType,
+            failCheckBelowThreshold: getBooleanInput('fail-check-below-threshold'),
+        };
+    }
+    catch (error) {
+        if (!(error instanceof InvalidInputError))
+            throw error;
+        setFailed(error.message);
+        return undefined;
+    }
+}
+class InvalidInputError extends Error {
+}
+function getPercentageInput(name) {
+    const value = String(getInput(name) ?? '').trim();
+    const percentage = Number(value);
+    if (!value || isNaN(percentage) || percentage < 0 || percentage > 100) {
+        throw new InvalidInputError(`'${name}' ${value} is invalid. It must be a number between 0 and 100`);
+    }
+    return percentage;
+}
+const TRUE_VALUES = ['true', 'True', 'TRUE'];
+const FALSE_VALUES = ['false', 'False', 'FALSE'];
+/**
+ * Reads a YAML 1.2 boolean. An empty value is false: GitHub fills in the
+ * action.yml default when an input is not set, so it is only empty when
+ * explicitly set to ''.
+ */
+function getBooleanInput(name) {
+    const value = String(getInput(name) ?? '').trim();
+    if (!value || FALSE_VALUES.includes(value))
+        return false;
+    if (TRUE_VALUES.includes(value))
+        return true;
+    throw new InvalidInputError(`'${name}' ${value} is invalid. It must be true or false`);
 }
 
-function getCoverageStatus(project, minCoverage) {
+function getCoverageStatus(project, minCoverage, coverageCounterType = 'INSTRUCTION') {
     const overall = project.overall?.percentage ?? 100;
     const changed = project.changed?.percentage ?? null;
     const difference = project.overall
-        ? getCoverageDifference(project.overall, project.changed)
+        ? getCoverageDifference(project.overall, project.changed, coverageCounterType)
         : null;
     const passed = overall >= minCoverage.overall &&
         (changed === null || changed >= minCoverage.changed);
@@ -44751,6 +44835,9 @@ function getCheckTitle(status) {
 }
 
 const DEFAULT_CHECK_NAME = 'JaCoCo Report';
+// GitHub rejects a check run whose output summary is longer than this
+const MAX_SUMMARY_LENGTH = 65535;
+const TRUNCATED_NOTE = "\n> Report truncated: exceeds GitHub's check summary limit";
 class MissingChecksPermissionError extends Error {
     constructor() {
         super("Publishing the check run requires the 'checks: write' permission. Add `checks: write` to the job permissions.");
@@ -44770,7 +44857,7 @@ async function publishCheck({ client, name, headSha, status, body, failBelowThre
             head_sha: headSha,
             status: 'completed',
             conclusion,
-            output: { title, summary: body },
+            output: { title, summary: truncateSummary(body) },
         });
     }
     catch (error) {
@@ -44778,6 +44865,15 @@ async function publishCheck({ client, name, headSha, status, body, failBelowThre
             throw new MissingChecksPermissionError();
         throw error;
     }
+}
+function truncateSummary(body) {
+    if (body.length <= MAX_SUMMARY_LENGTH)
+        return body;
+    // Leave room for the note and for closing any collapsed section that was cut
+    const reserved = TRUNCATED_NOTE.length + '\n</details>\n'.length * 2;
+    const kept = body.slice(0, body.lastIndexOf('\n', MAX_SUMMARY_LENGTH - reserved));
+    const unclosed = kept.split('<details>').length - kept.split('</details>').length;
+    return `${kept}\n${'\n</details>\n'.repeat(Math.max(unclosed, 0))}${TRUNCATED_NOTE}`;
 }
 function isForbidden(error) {
     return (typeof error === 'object' &&
@@ -44798,80 +44894,15 @@ async function action() {
         if (debugMode) {
             info(`inputs: ${debug({ ...inputs, token: '***' })}`);
         }
-        const parsedPrNumber = parseInt(inputs.prNumber, 10);
-        const prNumber = Number.isInteger(parsedPrNumber) && parsedPrNumber > 0
-            ? parsedPrNumber
-            : undefined;
         const client = getOctokit(token);
-        const sha = context.sha;
-        let base = sha;
-        let head = sha;
-        switch (event) {
-            case 'pull_request':
-            case 'pull_request_target':
-                base = context.payload.pull_request?.base.sha;
-                head = context.payload.pull_request?.head.sha;
-                break;
-            case 'push':
-                base = context.payload.before;
-                head = context.payload.after;
-                break;
-            case 'workflow_dispatch':
-            case 'schedule':
-                break;
-            case 'workflow_run':
-                const pullRequests = context.payload?.workflow_run?.pull_requests ?? [];
-                if (pullRequests.length !== 0) {
-                    base = pullRequests[0]?.base?.sha;
-                    head = pullRequests[0]?.head?.sha;
-                }
-                break;
-            default:
-                setFailed(`The event ${context.eventName} is not supported.`);
-                return;
-        }
-        const headShaInput = inputs.headSha;
-        const baseShaInput = inputs.baseSha;
-        switch (event) {
-            case 'pull_request':
-            case 'pull_request_target':
-            case 'workflow_run':
-                if (headShaInput || baseShaInput) {
-                    if (headShaInput)
-                        head = headShaInput;
-                    if (baseShaInput)
-                        base = baseShaInput;
-                }
-                else if (prNumber) {
-                    const pr = await client.rest.pulls.get({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        pull_number: prNumber,
-                    });
-                    base = pr.data.base.sha;
-                    head = pr.data.head.sha;
-                }
-                break;
-            case 'workflow_dispatch':
-            case 'schedule':
-                if (prNumber) {
-                    const pr = await client.rest.pulls.get({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        pull_number: prNumber,
-                    });
-                    base = pr.data.base.sha;
-                    head = pr.data.head.sha;
-                }
-                break;
-        }
+        const { base, head, prNumber } = await resolveCommits(event, parsePrNumber(inputs.prNumber), inputs.headSha, inputs.baseSha, client);
         info(`base sha: ${base}`);
         info(`head sha: ${head}`);
         if (debugMode)
             info(`context: ${debug(context)}`);
         if (debugMode)
             info(`reportPaths: ${reportPaths}`);
-        const changedFiles = await getChangedFiles(base, head, client, debugMode);
+        const changedFiles = await getChangedFiles(base, head, prNumber, client, debugMode);
         if (debugMode)
             info(`changedFiles: ${debug(changedFiles)}`);
         const reportsJsonAsync = getJsonReports(reportPaths, debugMode);
@@ -44885,31 +44916,96 @@ async function action() {
             client,
             name: inputs.checkName,
             headSha: head,
-            status: getCoverageStatus(project, inputs.minCoverage),
+            status: getCoverageStatus(project, inputs.minCoverage, coverageCounterType),
             body: getReport(project, inputs.minCoverage, inputs.emoji, inputs.showMissingLines, coverageCounterType),
             failBelowThreshold: inputs.failCheckBelowThreshold,
             debugMode,
         });
     }
-    catch (error$1) {
-        if (error$1 instanceof MissingChecksPermissionError) {
+    catch (thrown) {
+        const error$1 = thrown instanceof Error ? thrown : new Error(String(thrown));
+        if (error$1 instanceof MissingChecksPermissionError || !continueOnError) {
             setFailed(error$1);
         }
-        else if (error$1 instanceof Error) {
-            if (continueOnError) {
-                error(error$1);
-            }
-            else {
-                setFailed(error$1);
-            }
+        else {
+            error(error$1);
         }
     }
+}
+const ZERO_SHA = /^0+$/;
+function parsePrNumber(value) {
+    const parsed = parseInt(String(value ?? ''), 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+async function resolveCommits(event, prNumberInput, headShaInput, baseShaInput, client) {
+    const payload = context.payload;
+    const sha = context.sha;
+    let commits;
+    switch (event) {
+        case 'pull_request':
+        case 'pull_request_target':
+            commits = {
+                base: payload.pull_request?.base.sha,
+                head: payload.pull_request?.head.sha,
+                prNumber: parsePrNumber(payload.pull_request?.number),
+            };
+            break;
+        case 'push':
+            // A head-sha/base-sha/pr-number input does not apply to push events
+            return {
+                // The first push of a branch has no previous commit to compare with
+                base: ZERO_SHA.test(payload.before ?? '')
+                    ? (payload.repository?.default_branch ?? payload.after)
+                    : payload.before,
+                head: payload.after,
+            };
+        case 'workflow_dispatch':
+        case 'schedule':
+            commits = { base: sha, head: sha };
+            break;
+        case 'workflow_run': {
+            const pullRequest = payload.workflow_run?.pull_requests?.[0];
+            commits = pullRequest
+                ? {
+                    base: pullRequest.base?.sha,
+                    head: pullRequest.head?.sha,
+                    prNumber: parsePrNumber(pullRequest.number),
+                }
+                : // Fork PRs have no pull_requests: sha is the default branch head
+                    { base: sha, head: payload.workflow_run?.head_sha ?? sha };
+            break;
+        }
+        default:
+            throw new Error(`The event ${event} is not supported.`);
+    }
+    if (headShaInput || baseShaInput) {
+        return {
+            base: baseShaInput || commits.base,
+            head: headShaInput || commits.head,
+            prNumber: prNumberInput ?? commits.prNumber,
+        };
+    }
+    if (prNumberInput) {
+        const pr = await client.rest.pulls.get({
+            ...context.repo,
+            pull_number: prNumberInput,
+        });
+        return {
+            base: pr.data.base.sha,
+            head: pr.data.head.sha,
+            prNumber: prNumberInput,
+        };
+    }
+    return commits;
 }
 async function getJsonReports(xmlPaths, debugMode) {
     const globber = await create(xmlPaths.join('\n'));
     const files = await globber.glob();
     if (debugMode)
         info(`Resolved files: ${files}`);
+    if (files.length === 0) {
+        throw new Error(`No JaCoCo report matched paths: ${xmlPaths.join(', ')}`);
+    }
     return Promise.all(files.map(async (filePath) => {
         const trimmedPath = filePath.trim();
         const reportXml = await fs.promises.readFile(trimmedPath, 'utf-8');
@@ -44918,24 +45014,41 @@ async function getJsonReports(xmlPaths, debugMode) {
         return report;
     }));
 }
-async function getChangedFiles(base, head, client, debugMode) {
+// compareCommits returns at most this many files
+const COMPARE_FILES_LIMIT = 300;
+async function getChangedFiles(base, head, prNumber, client, debugMode) {
     const response = await client.rest.repos.compareCommits({
         base,
         head,
         owner: context.repo.owner,
         repo: context.repo.repo,
     });
+    let files = response.data.files ?? [];
+    if (files.length >= COMPARE_FILES_LIMIT) {
+        if (prNumber) {
+            files = await client.paginate(client.rest.pulls.listFiles, {
+                ...context.repo,
+                pull_number: prNumber,
+                per_page: 100,
+            });
+        }
+        else {
+            warning(`The comparison lists only the first ${COMPARE_FILES_LIMIT} changed files, so the rest are not counted. Set pr-number to read all files of a pull request.`);
+        }
+    }
     const changedFiles = [];
-    const files = response.data.files ?? [];
     for (const file of files) {
         if (debugMode)
             info(`file: ${debug(file)}`);
-        const changedFile = {
+        // GitHub leaves out the patch of a diff that is too large
+        if (!file.patch && file.status !== 'removed' && (file.changes ?? 0) > 0) {
+            warning(`The diff of ${file.filename} is too large to read, so its changed lines are not counted.`);
+        }
+        changedFiles.push({
             filePath: file.filename,
             url: file.blob_url,
             lines: getChangedLines(file.patch),
-        };
-        changedFiles.push(changedFile);
+        });
     }
     return changedFiles;
 }
