@@ -5,6 +5,11 @@ import {CoverageStatus, getCheckTitle} from '../status.js'
 
 export const DEFAULT_CHECK_NAME = 'JaCoCo Report'
 
+// GitHub rejects a check run whose output summary is longer than this
+const MAX_SUMMARY_LENGTH = 65535
+const TRUNCATED_NOTE =
+  "\n> Report truncated: exceeds GitHub's check summary limit"
+
 export class MissingChecksPermissionError extends Error {
   constructor() {
     super(
@@ -49,12 +54,25 @@ export async function publishCheck({
       head_sha: headSha,
       status: 'completed',
       conclusion,
-      output: {title, summary: body},
+      output: {title, summary: truncateSummary(body)},
     })
   } catch (error) {
     if (isForbidden(error)) throw new MissingChecksPermissionError()
     throw error
   }
+}
+
+function truncateSummary(body: string): string {
+  if (body.length <= MAX_SUMMARY_LENGTH) return body
+  // Leave room for the note and for closing any collapsed section that was cut
+  const reserved = TRUNCATED_NOTE.length + '\n</details>\n'.length * 2
+  const kept = body.slice(
+    0,
+    body.lastIndexOf('\n', MAX_SUMMARY_LENGTH - reserved)
+  )
+  const unclosed =
+    kept.split('<details>').length - kept.split('</details>').length
+  return `${kept}\n${'\n</details>\n'.repeat(Math.max(unclosed, 0))}${TRUNCATED_NOTE}`
 }
 
 function isForbidden(error: unknown): boolean {

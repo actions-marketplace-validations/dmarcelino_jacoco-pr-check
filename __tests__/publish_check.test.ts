@@ -44,6 +44,44 @@ describe('publishCheck', function () {
     })
   })
 
+  it('truncates a summary longer than the GitHub limit', async function () {
+    const row =
+      '|[File.java](https://github.com/o/r/blob/sha/File.java)|50%|:x:|\n'
+    await publishCheck({
+      client,
+      name: 'Coverage',
+      headSha: 'abc123',
+      status: {overall: 50, changed: 50, difference: null, passed: false},
+      body: row.repeat(2000),
+      failBelowThreshold: false,
+      debugMode: false,
+    })
+    const summary = create.mock.calls[0][0].output.summary
+    expect(summary.length).toBeLessThanOrEqual(65535)
+    expect(summary).toMatch(
+      /\|:x:\|\n\n> Report truncated: exceeds GitHub's check summary limit$/
+    )
+  })
+
+  it('closes a collapsed section cut by the truncation', async function () {
+    const row =
+      '|[File.java](https://github.com/o/r/blob/sha/File.java)|50%|:x:|\n'
+    await publishCheck({
+      client,
+      name: 'Coverage',
+      headSha: 'abc123',
+      status: {overall: 50, changed: 50, difference: null, passed: false},
+      body: `<details>\n<summary>Files</summary>\n\n${row.repeat(2000)}</details>`,
+      failBelowThreshold: false,
+      debugMode: false,
+    })
+    const summary = create.mock.calls[0][0].output.summary
+    expect(summary.length).toBeLessThanOrEqual(65535)
+    expect(summary).toMatch(
+      /\n<\/details>\n\n> Report truncated: exceeds GitHub's check summary limit$/
+    )
+  })
+
   it('defaults the check name when name is blank', async function () {
     await publishCheck({
       client,
