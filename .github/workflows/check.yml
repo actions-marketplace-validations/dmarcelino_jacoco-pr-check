@@ -40,11 +40,52 @@ jobs:
         run: |
           npm test
 
-      # The action runs from the committed bundle, so it must match the sources
-      - name: Check dist is up to date
+  # Failsafe that keeps the committed bundle the action runs from in sync with
+  # main: rebuilds dist after each change to main and commits it if it differs,
+  # covering Dependabot PRs (which cannot rebuild it) and a forgotten rebuild.
+  rebuild-dist:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    # Only the newest main commit needs a bundle
+    concurrency:
+      group: rebuild-dist
+      cancel-in-progress: true
+    permissions:
+      contents: write
+    steps:
+      # The write token is not stored by checkout and is only given to the push
+      # step, so dependency code run by the build cannot use it
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build
         run: |
+          npm ci --ignore-scripts
           npm run package
-          git diff --exit-code dist/
+
+      # A push with GITHUB_TOKEN does not start another workflow run, so this
+      # cannot loop. The push is rejected if main moved on in the meantime; the
+      # run for the newer commit then rebuilds instead.
+      - name: Commit and push dist
+        run: |
+          if git diff --quiet dist/; then
+            echo 'dist is up to date'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Rebuild dist' dist/
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Runs only after the build passes, as main has no branch protection to wait for it
   dependabot-auto-merge:
