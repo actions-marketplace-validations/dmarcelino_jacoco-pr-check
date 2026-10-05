@@ -1,11 +1,12 @@
+import * as path from 'path'
 import {getFilesWithCoverage} from './util.js'
+import {JacocoFile} from './models/jacoco.js'
 import {ChangedFile} from './models/github.js'
 import {Coverage, File, Line, Module, Project} from './models/project.js'
 import {
   Counter,
   CoverageCounterType,
   Group,
-  Package,
   Report,
 } from './models/jacoco-types.js'
 
@@ -17,10 +18,11 @@ export function getProjectCoverage(
 ): Project {
   const moduleCoverages: Module[] = []
   const modules = getModulesFromReports(reports)
+  const changedFilesByModule = assignChangedFiles(modules, changedFiles)
   for (const module of modules) {
-    const files = getFileCoverageFromPackages(
-      module.packages,
-      changedFiles,
+    const files = getFileCoverage(
+      module.sourceFiles,
+      changedFilesByModule.get(module) ?? [],
       coverageCounterType
     )
     if (files.length !== 0) {
@@ -92,9 +94,68 @@ function getAllGroups(groups: Group[]): Group[] {
 
 interface LocalModule {
   name: string
-  packages: Package[]
+  sourceFiles: JacocoFile[]
   root: Report | Group
   filePath?: string
+}
+
+function getSourcePath(file: JacocoFile): string {
+  return file.packageName ? `${file.packageName}/${file.name}` : file.name
+}
+
+function isSourceOf(file: JacocoFile, changedFile: ChangedFile): boolean {
+  const sourcePath = getSourcePath(file)
+  return (
+    changedFile.filePath === sourcePath ||
+    changedFile.filePath.endsWith(`/${sourcePath}`)
+  )
+}
+
+/**
+ * Assigns each changed file to the modules that have its source. When the
+ * same source path exists in several modules, the modules whose directory
+ * contains the changed file win; aggregate reports, whose directory does not
+ * contain the sources, keep every match.
+ */
+function assignChangedFiles(
+  modules: LocalModule[],
+  changedFiles: ChangedFile[]
+): Map<LocalModule, ChangedFile[]> {
+  const assigned = new Map<LocalModule, ChangedFile[]>()
+  for (const changedFile of changedFiles) {
+    let candidates = modules.filter(module =>
+      module.sourceFiles.some(file => isSourceOf(file, changedFile))
+    )
+    if (candidates.length > 1) {
+      const containing = candidates.filter(module =>
+        isUnderModuleDirectory(module, changedFile)
+      )
+      if (containing.length !== 0) candidates = containing
+    }
+    for (const module of candidates) {
+      assigned.set(module, [...(assigned.get(module) ?? []), changedFile])
+    }
+  }
+  return assigned
+}
+
+function isUnderModuleDirectory(
+  module: LocalModule,
+  changedFile: ChangedFile
+): boolean {
+  const modulePath = module.filePath
+    ? getModulePathFromFilePath(module.filePath)
+    : null
+  if (!modulePath) return false
+  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
+  const directory = path
+    .relative(workspace, modulePath)
+    .split(path.sep)
+    .join('/')
+  if (!directory || directory.startsWith('..') || path.isAbsolute(directory)) {
+    return false
+  }
+  return changedFile.filePath.startsWith(`${directory}/`)
 }
 
 function getModuleFromParent(
@@ -105,7 +166,7 @@ function getModuleFromParent(
   if (packages && packages.length !== 0) {
     return {
       name: parent.name,
-      packages,
+      sourceFiles: getFilesWithCoverage(packages),
       root: parent,
       filePath,
     }
@@ -172,19 +233,15 @@ function getCommonPrefix(paths: string[]): string {
   return segments[0].slice(0, commonEnd).join('/') + '/'
 }
 
-function getFileCoverageFromPackages(
-  packages: Package[],
+function getFileCoverage(
+  jacocoFiles: JacocoFile[],
   files: ChangedFile[],
   coverageCounterType: CoverageCounterType
 ): File[] {
   const resultFiles: File[] = []
-  const jacocoFiles = getFilesWithCoverage(packages)
   for (const jacocoFile of jacocoFiles) {
     const name = jacocoFile.name
-    const packageName = jacocoFile.packageName
-    const githubFile = files.find(function (f) {
-      return f.filePath.endsWith(`${packageName}/${name}`)
-    })
+    const githubFile = files.find(f => isSourceOf(jacocoFile, f))
     if (githubFile) {
       const counter = jacocoFile.counters.find(
         c => c.name === coverageCounterType.toLowerCase()
