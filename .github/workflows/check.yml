@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -43,10 +44,15 @@ jobs:
   # Failsafe that keeps the committed bundle the action runs from in sync with
   # main: rebuilds dist after each change to main and commits it if it differs,
   # covering Dependabot PRs (which cannot rebuild it) and a forgotten rebuild.
+  # Dependabot merges are pushes by GITHUB_TOKEN, which start no workflow run,
+  # so the merge job dispatches this workflow on main instead.
   rebuild-dist:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    # Only on main: a dispatch on another branch would push that branch to main
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
     # Only the newest main commit needs a bundle
     concurrency:
       group: rebuild-dist
@@ -96,6 +102,7 @@ jobs:
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     steps:
@@ -116,4 +123,12 @@ jobs:
         run: gh pr merge --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The merge above is a push by GITHUB_TOKEN, which starts no workflow run
+      - name: Rebuild dist on main
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh workflow run check.yml --ref main
+        env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
