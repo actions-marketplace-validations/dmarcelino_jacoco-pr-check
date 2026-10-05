@@ -94,13 +94,14 @@ jobs:
 
 ### Understanding the Coverage Report
 
-- The "delta" (the negative value next to the coverage) represents the percentage of newly added or modified lines of code that are not covered by unit tests.
-  It calculates the difference in test coverage based solely on the changes made in the current commit or pull request.
-  For example, if 10 lines of code are modified or added, and 8 of those lines are covered by unit tests, the "delta"
-  would be -20%, indicating 20% of the newly changed code is untested. However, the "delta" has limitations. It can never
-  be positive, meaning if you add more unit tests to cover existing, unmodified code, this additional coverage is
-  not reflected in the delta. The metric only considers lines directly changed in the current set of modifications,
-  as there is no mechanism to track improvements in coverage for pre-existing code that hasn't been altered.
+- The "delta" (the negative value next to the coverage) is the uncovered part of the changed lines, expressed as a
+  share of everything in the row (the project, module or file) in units of the coverage counter. It roughly shows how
+  much the coverage drops because of untested changes. For example, if a project has 1000 instructions and the pull
+  request changes lines holding 50 of them, 10 of which are not covered, the delta is -1% (10 / 1000).
+- The delta can never be positive: adding tests for existing, unchanged code is not reflected in it, because only the
+  lines changed in the current set of modifications are considered.
+- The delta is not shown for the `COMPLEXITY` and `METHOD` counter types, because their changed-lines coverage is
+  measured in instructions and cannot be compared with their overall coverage.
 
 ## Example Cases
 

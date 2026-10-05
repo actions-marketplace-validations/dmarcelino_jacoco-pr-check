@@ -26,9 +26,15 @@ export function getReport(
     project.overall,
     project.changed,
     minCoverage,
-    emoji
+    emoji,
+    coverageCounterType
   )
-  const moduleTable = getModuleTable(project.modules, minCoverage, emoji)
+  const moduleTable = getModuleTable(
+    project.modules,
+    minCoverage,
+    emoji,
+    coverageCounterType
+  )
   const filesTable = getFileTable(
     project,
     minCoverage,
@@ -52,7 +58,8 @@ const MODULE_COLLAPSE_THRESHOLD = 10
 function getModuleTable(
   modules: Module[],
   minCoverage: MinCoverage,
-  emoji: Emoji
+  emoji: Emoji,
+  coverageCounterType: CoverageCounterType
 ): string {
   const tableHeader = '|Module|Coverage||'
   const tableStructure = '|:-|:-|:-:|'
@@ -60,7 +67,8 @@ function getModuleTable(
   for (const module of modules) {
     const coverageDifference = getCoverageDifference(
       module.overall,
-      module.changed
+      module.changed,
+      coverageCounterType
     )
     renderRow(
       module.name,
@@ -115,7 +123,8 @@ function getFileTable(
       }
       const coverageDifference = getCoverageDifference(
         file.overall,
-        file.changed
+        file.changed,
+        coverageCounterType
       )
       renderRow(
         moduleName,
@@ -212,11 +221,18 @@ function isLineMissed(
   return line.instruction.covered === 0 && line.instruction.missed > 0
 }
 
+// Changed-line coverage of these counters is measured in instructions, so it
+// cannot be compared with their overall coverage
+const COUNTERS_WITHOUT_DELTA: CoverageCounterType[] = ['COMPLEXITY', 'METHOD']
+
 export function getCoverageDifference(
   overall: Coverage,
-  changed: Coverage | null
+  changed: Coverage | null,
+  coverageCounterType: CoverageCounterType
 ): number | null {
-  if (!changed) return null
+  if (!changed || COUNTERS_WITHOUT_DELTA.includes(coverageCounterType)) {
+    return null
+  }
   const totalInstructions = overall.covered + overall.missed
   const missed = changed.missed
   const changedPercentage = (missed / totalInstructions) * 100
@@ -229,14 +245,19 @@ function getOverallTable(
   overall: Coverage,
   changed: Coverage | null,
   minCoverage: MinCoverage,
-  emoji: Emoji
+  emoji: Emoji,
+  coverageCounterType: CoverageCounterType
 ): string {
   const overallStatus = getStatus(
     overall.percentage,
     minCoverage.overall,
     emoji
   )
-  const coverageDifference = getCoverageDifference(overall, changed)
+  const coverageDifference = getCoverageDifference(
+    overall,
+    changed,
+    coverageCounterType
+  )
   let coveragePercentage = `${formatCoverage(overall.percentage)}`
   if (shouldShow(coverageDifference)) {
     coveragePercentage += ` **\`${formatCoverage(coverageDifference)}\`**`

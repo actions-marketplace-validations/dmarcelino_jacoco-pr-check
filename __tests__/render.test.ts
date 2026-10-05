@@ -486,6 +486,21 @@ describe('Render', function () {
       })
     })
 
+    describe('coverage delta', function () {
+      it('is not rendered for METHOD and COMPLEXITY counters', function () {
+        for (const type of ['METHOD', 'COMPLEXITY'] as const) {
+          const report = render.getReport(
+            PROJECT.MULTI_MODULE,
+            {overall: 30, changed: 60},
+            emoji,
+            false,
+            type
+          )
+          expect(report).not.toContain('`-')
+        }
+      })
+    })
+
     describe('module table collapse', function () {
       it('collapses module table when more than 10 modules', function () {
         const modules = Array.from({length: 11}, (_, i) => ({

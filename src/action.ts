@@ -74,7 +74,11 @@ export async function action(): Promise<void> {
       client,
       name: inputs.checkName,
       headSha: head,
-      status: getCoverageStatus(project, inputs.minCoverage),
+      status: getCoverageStatus(
+        project,
+        inputs.minCoverage,
+        coverageCounterType
+      ),
       body: getReport(
         project,
         inputs.minCoverage,

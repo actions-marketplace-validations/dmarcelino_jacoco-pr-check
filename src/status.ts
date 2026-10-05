@@ -1,4 +1,5 @@
 import {MinCoverage, Project} from './models/project.js'
+import {CoverageCounterType} from './models/jacoco-types.js'
 import {formatCoverage, getCoverageDifference, shouldShow} from './render.js'
 
 export interface CoverageStatus {
@@ -10,12 +11,17 @@ export interface CoverageStatus {
 
 export function getCoverageStatus(
   project: Project,
-  minCoverage: MinCoverage
+  minCoverage: MinCoverage,
+  coverageCounterType: CoverageCounterType = 'INSTRUCTION'
 ): CoverageStatus {
   const overall = project.overall?.percentage ?? 100
   const changed = project.changed?.percentage ?? null
   const difference = project.overall
-    ? getCoverageDifference(project.overall, project.changed)
+    ? getCoverageDifference(
+        project.overall,
+        project.changed,
+        coverageCounterType
+      )
     : null
   const passed =
     overall >= minCoverage.overall &&
