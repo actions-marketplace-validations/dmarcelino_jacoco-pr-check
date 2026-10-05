@@ -11,7 +11,6 @@ export interface MockCore {
   debug: MockFn
   error: MockFn
   warning: MockFn
-  summary: {addRaw: MockFn; write: MockFn}
 }
 
 export interface MockContext {
@@ -36,10 +35,6 @@ export function createMockCore(): MockCore {
     debug: jest.fn(),
     error: jest.fn(),
     warning: jest.fn(),
-    summary: {
-      addRaw: jest.fn().mockReturnThis(),
-      write: jest.fn().mockReturnThis(),
-    },
   }
 }
 

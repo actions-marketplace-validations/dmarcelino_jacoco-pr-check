@@ -37,10 +37,6 @@ describe('Input validation', function () {
     }
   }
 
-  const createComment = jest.fn()
-  const listComments = jest.fn()
-  const updateComment = jest.fn()
-
   beforeEach(() => {
     mockCore.getInput.mockImplementation(getInput)
     mockGithub.getOctokit.mockReturnValue({
@@ -66,11 +62,7 @@ describe('Input validation', function () {
             }
           }),
         },
-        issues: {
-          createComment,
-          listComments,
-          updateComment,
-        },
+        checks: {create: jest.fn()},
       },
     })
     mockCore.setFailed.mockImplementation(c => {
@@ -108,23 +100,6 @@ describe('Input validation', function () {
     mockCore.setFailed.mockImplementation(c => {
       expect(c).toEqual("'token' is missing")
     })
-    await action.action()
-  })
-
-  it('Fail if comment-type is invalid', async () => {
-    mockCore.getInput.mockImplementation(c => {
-      switch (c) {
-        case 'comment-type':
-          return 'invalid'
-        default:
-          return getInput(c)
-      }
-    })
-    mockCore.setFailed.mockImplementation(c => {
-      expect(c).toEqual("'comment-type' invalid is invalid")
-    })
-    initContext(eventName, payload)
-
     await action.action()
   })
 

@@ -2,7 +2,7 @@ import * as os from 'os';
 import os__default, { EOL } from 'os';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
-import { promises, constants as constants$5, existsSync, readFileSync } from 'fs';
+import { promises, existsSync, readFileSync } from 'fs';
 import * as path$1 from 'path';
 import http from 'http';
 import https from 'https';
@@ -28537,7 +28537,7 @@ var MediaTypes;
     });
 };
 
-var __awaiter$3 = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+(undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -28547,268 +28547,6 @@ var __awaiter$3 = (undefined && undefined.__awaiter) || function (thisArg, _argu
     });
 };
 const { access, appendFile, writeFile } = promises;
-const SUMMARY_ENV_VAR = 'GITHUB_STEP_SUMMARY';
-class Summary {
-    constructor() {
-        this._buffer = '';
-    }
-    /**
-     * Finds the summary file path from the environment, rejects if env var is not found or file does not exist
-     * Also checks r/w permissions.
-     *
-     * @returns step summary file path
-     */
-    filePath() {
-        return __awaiter$3(this, void 0, void 0, function* () {
-            if (this._filePath) {
-                return this._filePath;
-            }
-            const pathFromEnv = process.env[SUMMARY_ENV_VAR];
-            if (!pathFromEnv) {
-                throw new Error(`Unable to find environment variable for $${SUMMARY_ENV_VAR}. Check if your runtime environment supports job summaries.`);
-            }
-            try {
-                yield access(pathFromEnv, constants$5.R_OK | constants$5.W_OK);
-            }
-            catch (_a) {
-                throw new Error(`Unable to access summary file: '${pathFromEnv}'. Check if the file has correct read/write permissions.`);
-            }
-            this._filePath = pathFromEnv;
-            return this._filePath;
-        });
-    }
-    /**
-     * Wraps content in an HTML tag, adding any HTML attributes
-     *
-     * @param {string} tag HTML tag to wrap
-     * @param {string | null} content content within the tag
-     * @param {[attribute: string]: string} attrs key-value list of HTML attributes to add
-     *
-     * @returns {string} content wrapped in HTML element
-     */
-    wrap(tag, content, attrs = {}) {
-        const htmlAttrs = Object.entries(attrs)
-            .map(([key, value]) => ` ${key}="${value}"`)
-            .join('');
-        if (!content) {
-            return `<${tag}${htmlAttrs}>`;
-        }
-        return `<${tag}${htmlAttrs}>${content}</${tag}>`;
-    }
-    /**
-     * Writes text in the buffer to the summary buffer file and empties buffer. Will append by default.
-     *
-     * @param {SummaryWriteOptions} [options] (optional) options for write operation
-     *
-     * @returns {Promise<Summary>} summary instance
-     */
-    write(options) {
-        return __awaiter$3(this, void 0, void 0, function* () {
-            const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
-            const filePath = yield this.filePath();
-            const writeFunc = overwrite ? writeFile : appendFile;
-            yield writeFunc(filePath, this._buffer, { encoding: 'utf8' });
-            return this.emptyBuffer();
-        });
-    }
-    /**
-     * Clears the summary buffer and wipes the summary file
-     *
-     * @returns {Summary} summary instance
-     */
-    clear() {
-        return __awaiter$3(this, void 0, void 0, function* () {
-            return this.emptyBuffer().write({ overwrite: true });
-        });
-    }
-    /**
-     * Returns the current summary buffer as a string
-     *
-     * @returns {string} string of summary buffer
-     */
-    stringify() {
-        return this._buffer;
-    }
-    /**
-     * If the summary buffer is empty
-     *
-     * @returns {boolen} true if the buffer is empty
-     */
-    isEmptyBuffer() {
-        return this._buffer.length === 0;
-    }
-    /**
-     * Resets the summary buffer without writing to summary file
-     *
-     * @returns {Summary} summary instance
-     */
-    emptyBuffer() {
-        this._buffer = '';
-        return this;
-    }
-    /**
-     * Adds raw text to the summary buffer
-     *
-     * @param {string} text content to add
-     * @param {boolean} [addEOL=false] (optional) append an EOL to the raw text (default: false)
-     *
-     * @returns {Summary} summary instance
-     */
-    addRaw(text, addEOL = false) {
-        this._buffer += text;
-        return addEOL ? this.addEOL() : this;
-    }
-    /**
-     * Adds the operating system-specific end-of-line marker to the buffer
-     *
-     * @returns {Summary} summary instance
-     */
-    addEOL() {
-        return this.addRaw(EOL);
-    }
-    /**
-     * Adds an HTML codeblock to the summary buffer
-     *
-     * @param {string} code content to render within fenced code block
-     * @param {string} lang (optional) language to syntax highlight code
-     *
-     * @returns {Summary} summary instance
-     */
-    addCodeBlock(code, lang) {
-        const attrs = Object.assign({}, (lang && { lang }));
-        const element = this.wrap('pre', this.wrap('code', code), attrs);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML list to the summary buffer
-     *
-     * @param {string[]} items list of items to render
-     * @param {boolean} [ordered=false] (optional) if the rendered list should be ordered or not (default: false)
-     *
-     * @returns {Summary} summary instance
-     */
-    addList(items, ordered = false) {
-        const tag = ordered ? 'ol' : 'ul';
-        const listItems = items.map(item => this.wrap('li', item)).join('');
-        const element = this.wrap(tag, listItems);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML table to the summary buffer
-     *
-     * @param {SummaryTableCell[]} rows table rows
-     *
-     * @returns {Summary} summary instance
-     */
-    addTable(rows) {
-        const tableBody = rows
-            .map(row => {
-            const cells = row
-                .map(cell => {
-                if (typeof cell === 'string') {
-                    return this.wrap('td', cell);
-                }
-                const { header, data, colspan, rowspan } = cell;
-                const tag = header ? 'th' : 'td';
-                const attrs = Object.assign(Object.assign({}, (colspan && { colspan })), (rowspan && { rowspan }));
-                return this.wrap(tag, data, attrs);
-            })
-                .join('');
-            return this.wrap('tr', cells);
-        })
-            .join('');
-        const element = this.wrap('table', tableBody);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds a collapsable HTML details element to the summary buffer
-     *
-     * @param {string} label text for the closed state
-     * @param {string} content collapsable content
-     *
-     * @returns {Summary} summary instance
-     */
-    addDetails(label, content) {
-        const element = this.wrap('details', this.wrap('summary', label) + content);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML image tag to the summary buffer
-     *
-     * @param {string} src path to the image you to embed
-     * @param {string} alt text description of the image
-     * @param {SummaryImageOptions} options (optional) addition image attributes
-     *
-     * @returns {Summary} summary instance
-     */
-    addImage(src, alt, options) {
-        const { width, height } = options || {};
-        const attrs = Object.assign(Object.assign({}, (width && { width })), (height && { height }));
-        const element = this.wrap('img', null, Object.assign({ src, alt }, attrs));
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML section heading element
-     *
-     * @param {string} text heading text
-     * @param {number | string} [level=1] (optional) the heading level, default: 1
-     *
-     * @returns {Summary} summary instance
-     */
-    addHeading(text, level) {
-        const tag = `h${level}`;
-        const allowedTag = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)
-            ? tag
-            : 'h1';
-        const element = this.wrap(allowedTag, text);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML thematic break (<hr>) to the summary buffer
-     *
-     * @returns {Summary} summary instance
-     */
-    addSeparator() {
-        const element = this.wrap('hr', null);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML line break (<br>) to the summary buffer
-     *
-     * @returns {Summary} summary instance
-     */
-    addBreak() {
-        const element = this.wrap('br', null);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML blockquote to the summary buffer
-     *
-     * @param {string} text quote text
-     * @param {string} cite (optional) citation url
-     *
-     * @returns {Summary} summary instance
-     */
-    addQuote(text, cite) {
-        const attrs = Object.assign({}, (cite && { cite }));
-        const element = this.wrap('blockquote', text, attrs);
-        return this.addRaw(element).addEOL();
-    }
-    /**
-     * Adds an HTML anchor tag to the summary buffer
-     *
-     * @param {string} text link text/content
-     * @param {string} href hyperlink
-     *
-     * @returns {Summary} summary instance
-     */
-    addLink(text, href) {
-        const element = this.wrap('a', text, { href });
-        return this.addRaw(element).addEOL();
-    }
-}
-const _summary = new Summary();
-const summary = _summary;
 
 (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -44757,10 +44495,9 @@ function sumReducer(total, value) {
 }
 
 const coverageAbsent = '> There is no coverage information present for the changed lines';
-function getPRComment(project, minCoverage, title, emoji, showMissingLines = false, coverageCounterType = 'INSTRUCTION') {
-    const heading = getTitle(title);
+function getReport(project, minCoverage, emoji, showMissingLines = false, coverageCounterType = 'INSTRUCTION') {
     if (!project.overall) {
-        return `${heading + coverageAbsent}`;
+        return coverageAbsent;
     }
     const overallTable = getOverallTable(project.overall, project.changed, minCoverage, emoji);
     const moduleTable = getModuleTable(project.modules, minCoverage, emoji);
@@ -44770,7 +44507,7 @@ function getPRComment(project, minCoverage, title, emoji, showMissingLines = fal
         : project.isMultiModule
             ? `${moduleTable}\n\n${filesTable}`
             : filesTable;
-    return `${heading + overallTable}\n\n${tables}`;
+    return `${overallTable}\n\n${tables}`;
 }
 const MODULE_COLLAPSE_THRESHOLD = 10;
 function getModuleTable(modules, minCoverage, emoji) {
@@ -44925,15 +44662,6 @@ function shouldShow(value) {
     const rounded = Math.abs(round(value));
     return rounded !== 0 && rounded !== 100;
 }
-function getTitle(title) {
-    if (title != null && title.trim().length > 0) {
-        const trimmed = title.trim();
-        return trimmed.startsWith('#') ? `${trimmed}\n` : `### ${trimmed}\n`;
-    }
-    else {
-        return '';
-    }
-}
 function getStatus(coverage, minCoverage, emoji) {
     let status = emoji.pass;
     if (coverage !== null && coverage < minCoverage) {
@@ -44960,13 +44688,6 @@ const VALID_COVERAGE_COUNTER_TYPES = [
     'METHOD',
 ];
 
-const VALID_COMMENT_TYPES = [
-    'pr_comment',
-    'summary',
-    'both',
-    'none',
-];
-const isValidCommentType = (value) => VALID_COMMENT_TYPES.includes(value);
 /**
  * Reads and validates all action inputs. On a validation error the failure is
  * reported through core.setFailed and undefined is returned.
@@ -44982,35 +44703,11 @@ function parseInputs() {
         setFailed("'paths' is missing");
         return undefined;
     }
-    if (getInput('min-coverage-changed-files')) {
-        setFailed("'min-coverage-changed-files' is no longer supported. Please use 'min-coverage-changed-lines' instead.");
-        return undefined;
-    }
     const coverageCounterType = getInput('coverage-counter-type')
         .toUpperCase();
     if (!VALID_COVERAGE_COUNTER_TYPES.includes(coverageCounterType)) {
         setFailed(`'coverage-counter-type' ${coverageCounterType} is invalid. Valid values: ${VALID_COVERAGE_COUNTER_TYPES.join(', ')}`);
         return undefined;
-    }
-    const commentType = getInput('comment-type');
-    if (!isValidCommentType(commentType)) {
-        setFailed(`'comment-type' ${commentType} is invalid. Valid values: ${VALID_COMMENT_TYPES.join(', ')}`);
-        return undefined;
-    }
-    const addCheck = processorsExports.parseBooleans(getInput('add-check'));
-    const failCheckBelowThreshold = processorsExports.parseBooleans(getInput('fail-check-below-threshold'));
-    if (failCheckBelowThreshold && !addCheck) {
-        setFailed("'fail-check-below-threshold' requires 'add-check' to be true");
-        return undefined;
-    }
-    if (commentType === 'none' && !addCheck) {
-        setFailed("'comment-type' is none and 'add-check' is false: nothing to publish");
-        return undefined;
-    }
-    const title = getInput('title');
-    const updateComment = processorsExports.parseBooleans(getInput('update-comment'));
-    if (updateComment && !title) {
-        info("'title' is not set. 'update-comment' does not work without 'title'");
     }
     return {
         token,
@@ -45019,13 +44716,10 @@ function parseInputs() {
             overall: parseFloat(getInput('min-coverage-overall')),
             changed: parseFloat(getInput('min-coverage-changed-lines')),
         },
-        title,
-        updateComment,
-        commentType,
+        checkName: getInput('check-name'),
         prNumber: getInput('pr-number'),
         headSha: getInput('head-sha'),
         baseSha: getInput('base-sha'),
-        skipIfNoChanges: processorsExports.parseBooleans(getInput('skip-if-no-changes')),
         showAllModules: processorsExports.parseBooleans(getInput('show-all-modules')),
         showMissingLines: processorsExports.parseBooleans(getInput('show-missing-lines')),
         emoji: {
@@ -45035,8 +44729,7 @@ function parseInputs() {
         continueOnError: processorsExports.parseBooleans(getInput('continue-on-error')),
         debugMode: processorsExports.parseBooleans(getInput('debug-mode')),
         coverageCounterType,
-        addCheck,
-        failCheckBelowThreshold,
+        failCheckBelowThreshold: processorsExports.parseBooleans(getInput('fail-check-below-threshold')),
     };
 }
 
@@ -45057,58 +44750,10 @@ function getCheckTitle(status) {
         : title;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-async function publishComment({ client, prNumber, update, title, body, debugMode, }) {
-    if (prNumber === undefined) {
-        if (debugMode)
-            info('prNumber not present');
-        return;
-    }
-    let commentUpdated = false;
-    if (debugMode)
-        info(`update: ${update}`);
-    if (debugMode)
-        info(`title: ${title}`);
-    if (debugMode)
-        info(`JaCoCo Comment: ${body}`);
-    if (update && title) {
-        if (debugMode)
-            info('Listing all comments');
-        const comments = await client.rest.issues.listComments({
-            issue_number: prNumber,
-            ...context.repo,
-        });
-        const comment = comments.data.find((it) => it.body.startsWith(title));
-        if (comment) {
-            if (debugMode)
-                info(`Updating existing comment: id=${comment.id} \n body=${comment.body}`);
-            await client.rest.issues.updateComment({
-                comment_id: comment.id,
-                body,
-                ...context.repo,
-            });
-            commentUpdated = true;
-        }
-    }
-    if (!commentUpdated) {
-        if (debugMode)
-            info('Creating a new comment');
-        await client.rest.issues.createComment({
-            issue_number: prNumber,
-            body,
-            ...context.repo,
-        });
-    }
-}
-
-async function publishSummary(body) {
-    await summary.addRaw(body, true).write();
-}
-
 const DEFAULT_CHECK_NAME = 'JaCoCo Report';
 class MissingChecksPermissionError extends Error {
     constructor() {
-        super("'add-check' requires the 'checks: write' permission. Add `checks: write` to the job permissions.");
+        super("Publishing the check run requires the 'checks: write' permission. Add `checks: write` to the job permissions.");
         this.name = 'MissingChecksPermissionError';
     }
 }
@@ -45147,15 +44792,14 @@ async function action() {
         if (!inputs)
             return;
         continueOnError = inputs.continueOnError;
-        const { token, reportPaths, skipIfNoChanges, showAllModules, debugMode, coverageCounterType, } = inputs;
+        const { token, reportPaths, showAllModules, debugMode, coverageCounterType } = inputs;
         const event = context.eventName;
         info(`Event is ${event}`);
         if (debugMode) {
             info(`inputs: ${debug({ ...inputs, token: '***' })}`);
         }
-        const prNumberInput = inputs.prNumber;
-        const parsedPrNumber = parseInt(prNumberInput, 10);
-        let prNumber = Number.isInteger(parsedPrNumber) && parsedPrNumber > 0
+        const parsedPrNumber = parseInt(inputs.prNumber, 10);
+        const prNumber = Number.isInteger(parsedPrNumber) && parsedPrNumber > 0
             ? parsedPrNumber
             : undefined;
         const client = getOctokit(token);
@@ -45167,29 +44811,19 @@ async function action() {
             case 'pull_request_target':
                 base = context.payload.pull_request?.base.sha;
                 head = context.payload.pull_request?.head.sha;
-                prNumber = prNumber ?? context.payload.pull_request?.number;
                 break;
             case 'push':
                 base = context.payload.before;
                 head = context.payload.after;
-                prNumber =
-                    prNumber ?? (await getPrNumberAssociatedWithCommit(client, sha));
                 break;
             case 'workflow_dispatch':
             case 'schedule':
-                prNumber =
-                    prNumber ?? (await getPrNumberAssociatedWithCommit(client, sha));
                 break;
             case 'workflow_run':
                 const pullRequests = context.payload?.workflow_run?.pull_requests ?? [];
                 if (pullRequests.length !== 0) {
                     base = pullRequests[0]?.base?.sha;
                     head = pullRequests[0]?.head?.sha;
-                    prNumber = prNumber ?? pullRequests[0]?.number;
-                }
-                else {
-                    prNumber =
-                        prNumber ?? (await getPrNumberAssociatedWithCommit(client, sha));
                 }
                 break;
             default:
@@ -45208,7 +44842,7 @@ async function action() {
                     if (baseShaInput)
                         base = baseShaInput;
                 }
-                else if (prNumberInput && prNumber) {
+                else if (prNumber) {
                     const pr = await client.rest.pulls.get({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
@@ -45220,7 +44854,7 @@ async function action() {
                 break;
             case 'workflow_dispatch':
             case 'schedule':
-                if (prNumberInput && prNumber) {
+                if (prNumber) {
                     const pr = await client.rest.pulls.get({
                         owner: context.repo.owner,
                         repo: context.repo.repo,
@@ -45247,12 +44881,15 @@ async function action() {
             info(`project: ${debug(project)}`);
         setOutput('coverage-overall', project.overall ? parseFloat(project.overall.percentage.toFixed(2)) : 100);
         setOutput('coverage-changed-lines', project.changed ? parseFloat(project.changed.percentage.toFixed(2)) : 100);
-        const skip = skipIfNoChanges && project.modules.length === 0;
-        if (debugMode)
-            info(`skip: ${skip}`);
-        if (debugMode)
-            info(`prNumber: ${prNumber}`);
-        await publish(inputs, project, head, prNumber, client, skip);
+        await publishCheck({
+            client,
+            name: inputs.checkName,
+            headSha: head,
+            status: getCoverageStatus(project, inputs.minCoverage),
+            body: getReport(project, inputs.minCoverage, inputs.emoji, inputs.showMissingLines, coverageCounterType),
+            failBelowThreshold: inputs.failCheckBelowThreshold,
+            debugMode,
+        });
     }
     catch (error$1) {
         if (error$1 instanceof MissingChecksPermissionError) {
@@ -45301,44 +44938,6 @@ async function getChangedFiles(base, head, client, debugMode) {
         changedFiles.push(changedFile);
     }
     return changedFiles;
-}
-async function publish(inputs, project, headSha, prNumber, client, skipComment) {
-    const { minCoverage, title, emoji, showMissingLines, coverageCounterType } = inputs;
-    const render = (heading) => getPRComment(project, minCoverage, heading, emoji, showMissingLines, coverageCounterType);
-    const wantsComment = inputs.commentType === 'pr_comment' || inputs.commentType === 'both';
-    const wantsSummary = inputs.commentType === 'summary' || inputs.commentType === 'both';
-    if (wantsComment && !skipComment) {
-        await publishComment({
-            client,
-            prNumber,
-            update: inputs.updateComment,
-            title: getTitle(title),
-            body: render(title),
-            debugMode: inputs.debugMode,
-        });
-    }
-    if (wantsSummary && !skipComment) {
-        await publishSummary(render(title));
-    }
-    if (inputs.addCheck) {
-        await publishCheck({
-            client,
-            name: title,
-            headSha,
-            status: getCoverageStatus(project, minCoverage),
-            body: render(''),
-            failBelowThreshold: inputs.failCheckBelowThreshold,
-            debugMode: inputs.debugMode,
-        });
-    }
-}
-async function getPrNumberAssociatedWithCommit(client, commitSha) {
-    const response = await client.rest.repos.listPullRequestsAssociatedWithCommit({
-        commit_sha: commitSha,
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-    });
-    return response.data.length > 0 ? response.data[0].number : undefined;
 }
 
 action();

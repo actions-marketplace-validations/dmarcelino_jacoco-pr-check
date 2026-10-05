@@ -44,7 +44,7 @@ describe('publishCheck', function () {
     })
   })
 
-  it('defaults the check name when title is empty', async function () {
+  it('defaults the check name when name is blank', async function () {
     await publishCheck({
       client,
       name: '',

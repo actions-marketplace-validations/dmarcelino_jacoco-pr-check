@@ -17,7 +17,6 @@ const HEAD_SHA = 'aahsdflais76dfa78wrglghjkaghkj'
 
 describe('Check run publishing', function () {
   let createCheck
-  let createComment
   let inputs
 
   function getInput(key): string {
@@ -26,13 +25,10 @@ describe('Check run publishing', function () {
 
   beforeEach(() => {
     createCheck = jest.fn().mockResolvedValue({})
-    createComment = jest.fn()
     inputs = {
       paths: './__tests__/__fixtures__/report.xml',
       token: 'SMPLEHDjasdf876a987',
-      title: 'JaCoCo Report',
-      'comment-type': 'none',
-      'add-check': 'true',
+      'check-name': 'JaCoCo Report',
       'fail-check-below-threshold': 'false',
       'min-coverage-overall': '45',
       'min-coverage-changed-lines': '80',
@@ -49,7 +45,6 @@ describe('Check run publishing', function () {
         repos: {
           compareCommits: jest.fn(() => compareCommitsResponse),
         },
-        issues: {createComment},
         checks: {create: createCheck},
       },
     })
@@ -77,10 +72,9 @@ describe('Check run publishing', function () {
     },
   }
 
-  it('publishes a check run and no comment when comment-type is none', async () => {
+  it('publishes a completed check run on the head commit', async () => {
     await action.action()
 
-    expect(createComment).not.toHaveBeenCalled()
     expect(mockCore.setFailed).not.toHaveBeenCalled()
     expect(createCheck).toHaveBeenCalledTimes(1)
     const call = createCheck.mock.calls[0][0]
@@ -104,29 +98,32 @@ describe('Check run publishing', function () {
     expect(createCheck.mock.calls[0][0].conclusion).toBe('failure')
   })
 
-  it('publishes both a comment and a check when comment-type is pr_comment', async () => {
-    inputs['comment-type'] = 'pr_comment'
+  it('uses check-name as the check run name', async () => {
+    inputs['check-name'] = 'Coverage'
 
     await action.action()
 
-    expect(createComment).toHaveBeenCalledTimes(1)
-    expect(createCheck).toHaveBeenCalledTimes(1)
+    expect(createCheck.mock.calls[0][0].name).toBe('Coverage')
   })
 
-  it('still publishes the check when skip-if-no-changes skips the comment', async () => {
-    inputs['comment-type'] = 'pr_comment'
-    inputs['skip-if-no-changes'] = 'true'
+  it('names the check JaCoCo Report when check-name is blank', async () => {
+    inputs['check-name'] = ' '
+
+    await action.action()
+
+    expect(createCheck.mock.calls[0][0].name).toBe('JaCoCo Report')
+  })
+
+  it('publishes the check when no changed file has coverage information', async () => {
     mockGithub.getOctokit.mockReturnValue({
       rest: {
         repos: {compareCommits: jest.fn(() => ({data: {files: []}}))},
-        issues: {createComment},
         checks: {create: createCheck},
       },
     })
 
     await action.action()
 
-    expect(createComment).not.toHaveBeenCalled()
     expect(createCheck).toHaveBeenCalledTimes(1)
     const call = createCheck.mock.calls[0][0]
     expect(call.output.title).toBe('Overall 35.25%')
