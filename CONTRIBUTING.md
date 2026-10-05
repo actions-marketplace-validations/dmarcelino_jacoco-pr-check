@@ -1,7 +1,7 @@
 # Contributing
 
 When contributing to this repository, we encourage to first discuss the change you wish to make via
-an [issue](https://github.com/dmarcelino/jacoco-report/issues) before
+an [issue](https://github.com/dmarcelino/jacoco-pr-checks/issues) before
 submitting a change. We're not strict about this and for small changes feel free to raise a PR directly.
 
 ## Pull Request Process
