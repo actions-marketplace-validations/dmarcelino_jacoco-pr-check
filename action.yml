@@ -1,4 +1,4 @@
-name: 'JaCoCo Report'
+name: 'Code Coverage'
 description: 'Publishes the JaCoCo coverage report as a check run on the Pull Request head commit'
 inputs:
   paths:
