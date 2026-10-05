@@ -4,49 +4,7 @@ import {PROJECT} from './mocks.test'
 import {Project} from '../src/models/project'
 
 describe('Render', function () {
-  describe('getTitle', function () {
-    it('title is not present', function () {
-      const title = render.getTitle(undefined)
-      expect(title).toEqual('')
-    })
-
-    it('title is empty', function () {
-      const title = render.getTitle('')
-      expect(title).toEqual('')
-    })
-
-    it('title with blank space', function () {
-      const title = render.getTitle(' ')
-      expect(title).toEqual('')
-    })
-
-    it('title does not start with #', function () {
-      const title = render.getTitle('Coverage Report')
-      expect(title).toEqual('### Coverage Report\n')
-    })
-
-    it('title does not start with # with empty space at beginning and end', function () {
-      const title = render.getTitle(' Coverage Report ')
-      expect(title).toEqual('### Coverage Report\n')
-    })
-
-    it('title starts with #', function () {
-      const title = render.getTitle('# Coverage Report')
-      expect(title).toEqual('# Coverage Report\n')
-    })
-
-    it('title with back-ticks', function () {
-      const title = render.getTitle('# `Coverage Report`')
-      expect(title).toEqual('# `Coverage Report`\n')
-    })
-
-    it('title starts with # with empty space at beginning and end', function () {
-      const title = render.getTitle(' # Coverage Report ')
-      expect(title).toEqual('# Coverage Report\n')
-    })
-  })
-
-  describe('get PR Comment', function () {
+  describe('getReport', function () {
     const emoji = {
       pass: ':green_apple:',
       fail: ':x:',
@@ -58,16 +16,15 @@ describe('Render', function () {
         changed: null,
       }
       it('coverage greater than min coverage', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 30,
             changed: 50,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25%|:green_apple:|
 |:-|:-|:-:|
 
@@ -76,36 +33,16 @@ describe('Render', function () {
       })
 
       it('coverage lesser than min coverage', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 70,
             changed: 50,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25%|:x:|
-|:-|:-|:-:|
-
-> There is no coverage information present for the changed lines`
-        )
-      })
-
-      it('with title', function () {
-        const comment = render.getPRComment(
-          project,
-          {
-            overall: 70,
-            changed: 50,
-          },
-          'Coverage',
-          emoji
-        )
-        expect(comment).toEqual(
-          `### Coverage
-|Overall Project|35.25%|:x:|
 |:-|:-|:-:|
 
 > There is no coverage information present for the changed lines`
@@ -117,16 +54,15 @@ describe('Render', function () {
       const project = PROJECT.SINGLE_MODULE
 
       it('coverage greater than min coverage for overall project', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 30,
             changed: 60,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25% **\`-17.21%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
@@ -141,16 +77,15 @@ describe('Render', function () {
       })
 
       it('coverage lesser than min coverage for overall project', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 50,
             changed: 64,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
@@ -165,16 +100,15 @@ describe('Render', function () {
       })
 
       it('coverage lesser than min coverage for changed files', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 30,
             changed: 80,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25% **\`-17.21%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
@@ -189,42 +123,16 @@ describe('Render', function () {
       })
 
       it('coverage greater than min coverage for changed files', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 50,
             changed: 20,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|35.25% **\`-17.21%\`**|:x:|
-|:-|:-|:-:|
-|Changed lines|38.24%|:green_apple:|
-<br>
-
-|File|Coverage||
-|:-|:-|:-:|
-|[StringOp.java](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/java/com/madrapps/jacoco/operation/StringOp.java)|100%|:green_apple:|
-|[Math.kt](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt)|42% **\`-42%\`**|:green_apple:|
-|[Utility.java](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/java/com/madrapps/jacoco/Utility.java)|18.03%|:green_apple:|`
-        )
-      })
-
-      it('with title', function () {
-        const comment = render.getPRComment(
-          project,
-          {
-            overall: 50,
-            changed: 20,
-          },
-          'Coverage',
-          emoji
-        )
-        expect(comment).toEqual(
-          `### Coverage
-|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:green_apple:|
 <br>
@@ -242,16 +150,15 @@ describe('Render', function () {
       const project = PROJECT.MULTI_MODULE
 
       it('coverage greater than min coverage for overall project', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 20,
             changed: 60,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
@@ -280,16 +187,15 @@ describe('Render', function () {
       })
 
       it('coverage lesser than min coverage for overall project', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 50,
             changed: 30,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|20.41% **\`-19.39%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
@@ -318,16 +224,15 @@ describe('Render', function () {
       })
 
       it('coverage lesser than min coverage for changed files', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 20,
             changed: 90,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
@@ -356,16 +261,15 @@ describe('Render', function () {
       })
 
       it('coverage greater than min coverage for changed files', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 50,
             changed: 7,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|20.41% **\`-19.39%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:green_apple:|
@@ -383,45 +287,6 @@ describe('Render', function () {
 |Module|File|Coverage||
 |:-|:-|:-|:-:|
 |text|[StringOp.java](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/text/src/main/java/com/madrapps/text/StringOp.java)|84.62% **\`-15.38%\`**|:green_apple:|
-|math|[Math.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/math/src/main/java/com/madrapps/math/Math.kt)|59.38% **\`-15.63%\`**|:x:|
-||[Statistics.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/math/src/main/java/com/madrapps/math/Statistics.kt)|0%|:x:|
-|app|[MainViewModel.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/app/src/main/java/com/madrapps/playground/MainViewModel.kt)|35.71% **\`-28.57%\`**|:x:|
-||[MainActivity.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/app/src/main/java/com/madrapps/playground/MainActivity.kt)|0% **\`-14%\`**|:x:|
-||[OnClickEvent.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/app/src/main/java/com/madrapps/playground/events/OnClickEvent.kt)|0%|:x:|
-
-</details>`
-        )
-      })
-
-      it('with title', function () {
-        const comment = render.getPRComment(
-          project,
-          {
-            overall: 50,
-            changed: 90,
-          },
-          'Coverage',
-          emoji
-        )
-        expect(comment).toEqual(
-          `### Coverage
-|Overall Project|20.41% **\`-19.39%\`**|:x:|
-|:-|:-|:-:|
-|Changed lines|7.32%|:x:|
-<br>
-
-|Module|Coverage||
-|:-|:-|:-:|
-|text|84.62% **\`-15.38%\`**|:x:|
-|math|51.35% **\`-27.03%\`**|:x:|
-|app|6.85% **\`-17.81%\`**|:x:|
-
-<details>
-<summary>Files</summary>
-
-|Module|File|Coverage||
-|:-|:-|:-|:-:|
-|text|[StringOp.java](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/text/src/main/java/com/madrapps/text/StringOp.java)|84.62% **\`-15.38%\`**|:x:|
 |math|[Math.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/math/src/main/java/com/madrapps/math/Math.kt)|59.38% **\`-15.63%\`**|:x:|
 ||[Statistics.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/math/src/main/java/com/madrapps/math/Statistics.kt)|0%|:x:|
 |app|[MainViewModel.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/app/src/main/java/com/madrapps/playground/MainViewModel.kt)|35.71% **\`-28.57%\`**|:x:|
@@ -467,16 +332,15 @@ describe('Render', function () {
       }
 
       it('modules without changed files show overall coverage only', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {
             overall: 20,
             changed: 60,
           },
-          '',
           emoji
         )
-        expect(comment).toEqual(
+        expect(report).toEqual(
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
@@ -502,56 +366,53 @@ describe('Render', function () {
 
     describe('show missing lines', function () {
       it('single module with missing lines', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           PROJECT.SINGLE_MODULE,
           {overall: 30, changed: 60},
-          '',
           emoji,
           true
         )
-        expect(comment).toContain('|File|Coverage|Lines missed||')
-        expect(comment).toContain('|:-|:-|:-|:-:|')
-        expect(comment).toContain(
+        expect(report).toContain('|File|Coverage|Lines missed||')
+        expect(report).toContain('|:-|:-|:-|:-:|')
+        expect(report).toContain(
           '[L13-L14](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt#L13-L14)'
         )
-        expect(comment).toContain(
+        expect(report).toContain(
           '[L16](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt#L16)'
         )
-        expect(comment).toContain(
+        expect(report).toContain(
           '[L29](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt#L29)'
         )
-        expect(comment).toContain(
+        expect(report).toContain(
           '[L43](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt#L43)'
         )
       })
 
       it('multi module with missing lines', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           PROJECT.MULTI_MODULE,
           {overall: 20, changed: 60},
-          '',
           emoji,
           true
         )
-        expect(comment).toContain('|Module|File|Coverage|Lines missed||')
-        expect(comment).toContain('|:-|:-|:-|:-|:-:|')
-        expect(comment).toContain(
+        expect(report).toContain('|Module|File|Coverage|Lines missed||')
+        expect(report).toContain('|:-|:-|:-|:-|:-:|')
+        expect(report).toContain(
           '[L20](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/text/src/main/java/com/madrapps/text/StringOp.java#L20)'
         )
-        expect(comment).toContain(
+        expect(report).toContain(
           '[L22](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/math/src/main/java/com/madrapps/math/Math.kt#L22)'
         )
       })
 
       it('no missing lines for fully covered file', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           PROJECT.SINGLE_MODULE,
           {overall: 30, changed: 60},
-          '',
           emoji,
           true
         )
-        const stringOpRow = comment
+        const stringOpRow = report
           .split('\n')
           .find(line => line.includes('StringOp.java'))
         expect(stringOpRow).toContain('||:green_apple:|')
@@ -583,48 +444,45 @@ describe('Render', function () {
           overall: {missed: 100, covered: 10, percentage: 9.09},
           changed: {missed: 50, covered: 0, percentage: 0},
         }
-        const comment = render.getPRComment(
+        const report = render.getReport(
           manyMissedLines,
           {overall: 30, changed: 60},
-          '',
           emoji,
           true
         )
-        expect(comment).toContain(
+        expect(report).toContain(
           '[+15 more](https://github.com/example/repo/blob/abc123/Big.kt)'
         )
       })
 
       it('uses branch counter when coverageCounterType is BRANCH', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           PROJECT.SINGLE_MODULE,
           {overall: 30, changed: 60},
-          '',
           emoji,
           true,
           'BRANCH'
         )
         // Line 13 has branch.missed=2, branch.covered=0 → fully missed
-        expect(comment).toContain(
+        expect(report).toContain(
           '[L13](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt#L13)'
         )
         // Lines 14, 16, 29, 43 have branch.missed=0 → should NOT appear
-        expect(comment).not.toContain('#L14)')
-        expect(comment).not.toContain('#L16)')
-        expect(comment).not.toContain('#L29)')
-        expect(comment).not.toContain('#L43)')
+        expect(report).not.toContain('#L14)')
+        expect(report).not.toContain('#L16)')
+        expect(report).not.toContain('#L29)')
+        expect(report).not.toContain('#L43)')
       })
 
       it('disabled when showMissingLines is false', function () {
-        const comment = render.getPRComment(
+        const report = render.getReport(
           PROJECT.SINGLE_MODULE,
           {overall: 30, changed: 60},
-          '',
           emoji,
           false
         )
-        expect(comment).not.toContain('Lines missed')
-        expect(comment).toContain('|File|Coverage||')
+        expect(report).not.toContain('Lines missed')
+        expect(report).toContain('|File|Coverage||')
       })
     })
 
@@ -642,16 +500,15 @@ describe('Render', function () {
           overall: {covered: 550, missed: 550, percentage: 50},
           changed: null,
         }
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {overall: 40, changed: 60},
-          '',
           emoji
         )
-        expect(comment).toContain('<details>')
-        expect(comment).toContain('<summary>Modules (11)</summary>')
-        expect(comment).toContain('|module-1|50%|:green_apple:|')
-        expect(comment).toContain('|module-11|50%|:green_apple:|')
+        expect(report).toContain('<details>')
+        expect(report).toContain('<summary>Modules (11)</summary>')
+        expect(report).toContain('|module-1|50%|:green_apple:|')
+        expect(report).toContain('|module-11|50%|:green_apple:|')
       })
 
       it('does not collapse module table when 10 or fewer modules', function () {
@@ -667,15 +524,14 @@ describe('Render', function () {
           overall: {covered: 500, missed: 500, percentage: 50},
           changed: null,
         }
-        const comment = render.getPRComment(
+        const report = render.getReport(
           project,
           {overall: 40, changed: 60},
-          '',
           emoji
         )
-        expect(comment).not.toContain('<summary>Modules')
-        expect(comment).toContain('|module-1|50%|:green_apple:|')
-        expect(comment).toContain('|module-10|50%|:green_apple:|')
+        expect(report).not.toContain('<summary>Modules')
+        expect(report).toContain('|module-1|50%|:green_apple:|')
+        expect(report).toContain('|module-10|50%|:green_apple:|')
       })
     })
   })

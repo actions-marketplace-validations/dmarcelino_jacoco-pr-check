@@ -14,7 +14,7 @@ jest.unstable_mockModule('@actions/github', () => mockGithub)
 const action = await import('../src/action')
 
 describe('Multiple reports', function () {
-  let comment
+  let createCheck
   let output
 
   const compareCommitsResponse = {
@@ -62,8 +62,8 @@ describe('Multiple reports', function () {
         return './__tests__/__fixtures__/multi_module/appCoverage.xml,./__tests__/__fixtures__/multi_module/mathCoverage.xml,./__tests__/__fixtures__/multi_module/textCoverage.xml'
       case 'token':
         return 'SMPLEHDjasdf876a987'
-      case 'comment-type':
-        return 'pr_comment'
+      case 'check-name':
+        return 'JaCoCo Report'
       case 'min-coverage-overall':
         return 45
       case 'min-coverage-changed-lines':
@@ -80,7 +80,7 @@ describe('Multiple reports', function () {
   }
 
   beforeEach(() => {
-    comment = jest.fn()
+    createCheck = jest.fn()
     output = jest.fn()
 
     mockCore.getInput.mockImplementation(getInput)
@@ -91,13 +91,8 @@ describe('Multiple reports', function () {
           compareCommits: jest.fn(() => {
             return compareCommitsResponse
           }),
-          listPullRequestsAssociatedWithCommit: jest.fn(() => {
-            return {data: []}
-          }),
         },
-        issues: {
-          createComment: comment,
-        },
+        checks: {create: createCheck},
       },
     })
     mockCore.setFailed.mockImplementation(c => {
@@ -119,11 +114,11 @@ describe('Multiple reports', function () {
       },
     }
 
-    it('publish proper comment', async () => {
+    it('publish proper check report', async () => {
       initContext(eventName, payload)
       await action.action()
 
-      expect(comment.mock.calls[0][0].body)
+      expect(createCheck.mock.calls[0][0].output.summary)
         .toEqual(`|Overall Project|20.41% **\`-16.84%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|8.33%|:x:|

@@ -1,7 +1,7 @@
 {
   "name": "jacoco-report",
-  "version": "2.0.0",
-  "description": "Github action that publishes the JaCoCo report as a comment in the Pull Request",
+  "version": "0.1.0",
+  "description": "Github action that publishes the JaCoCo report as a check run on the Pull Request",
   "type": "module",
   "private": true,
   "exports": {
@@ -23,15 +23,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Madrapps/jacoco-report.git"
+    "url": "git+https://github.com/dmarcelino/jacoco-report.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Madrapps/jacoco-report/issues"
+    "url": "https://github.com/dmarcelino/jacoco-report/issues"
   },
-  "homepage": "https://github.com/Madrapps/jacoco-report#readme",
+  "homepage": "https://github.com/dmarcelino/jacoco-report#readme",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",

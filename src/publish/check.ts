@@ -8,7 +8,7 @@ export const DEFAULT_CHECK_NAME = 'JaCoCo Report'
 export class MissingChecksPermissionError extends Error {
   constructor() {
     super(
-      "'add-check' requires the 'checks: write' permission. Add `checks: write` to the job permissions."
+      "Publishing the check run requires the 'checks: write' permission. Add `checks: write` to the job permissions."
     )
     this.name = 'MissingChecksPermissionError'
   }

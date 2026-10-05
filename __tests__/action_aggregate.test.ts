@@ -14,9 +14,7 @@ jest.unstable_mockModule('@actions/github', () => mockGithub)
 const action = await import('../src/action')
 
 describe('Aggregate report', function () {
-  let createComment
-  let listComments
-  let updateComment
+  let createCheck
   let output
 
   function getInput(key: string): string {
@@ -25,8 +23,8 @@ describe('Aggregate report', function () {
         return './__tests__/__fixtures__/aggregate-report.xml'
       case 'token':
         return 'SMPLEHDjasdf876a987'
-      case 'comment-type':
-        return 'pr_comment'
+      case 'check-name':
+        return 'JaCoCo Report'
       case 'min-coverage-overall':
         return 45
       case 'min-coverage-changed-lines':
@@ -43,9 +41,7 @@ describe('Aggregate report', function () {
   }
 
   beforeEach(() => {
-    createComment = jest.fn()
-    listComments = jest.fn()
-    updateComment = jest.fn()
+    createCheck = jest.fn()
     output = jest.fn()
 
     mockCore.getInput.mockImplementation(getInput)
@@ -56,15 +52,8 @@ describe('Aggregate report', function () {
           compareCommits: jest.fn(() => {
             return compareCommitsResponse
           }),
-          listPullRequestsAssociatedWithCommit: jest.fn(() => {
-            return {data: []}
-          }),
         },
-        issues: {
-          createComment,
-          listComments,
-          updateComment,
-        },
+        checks: {create: createCheck},
       },
     })
     mockCore.setFailed.mockImplementation(c => {
@@ -106,11 +95,11 @@ describe('Aggregate report', function () {
       },
     }
 
-    it('publish proper comment', async () => {
+    it('publish proper check report', async () => {
       initContext(eventName, payload)
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body)
+      expect(createCheck.mock.calls[0][0].output.summary)
         .toEqual(`|Overall Project|76.32% **\`-0.01%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|0%|:x:|
@@ -130,33 +119,6 @@ describe('Aggregate report', function () {
 |module-3|[MainViewModel.kt](https://github.com/thsaravana/jacoco-android-playground/blob/63aa82c13d2a6aadccb7a06ac7cb6834351b8474/app/src/main/java/com/madrapps/playground/MainViewModel.kt)|58.82%|:green_apple:|
 
 </details>`)
-    })
-
-    it('updates a previous comment', async () => {
-      initContext(eventName, payload)
-      const title = 'JaCoCo Report'
-      mockCore.getInput.mockImplementation(c => {
-        switch (c) {
-          case 'title':
-            return title
-          case 'update-comment':
-            return 'true'
-          default:
-            return getInput(c)
-        }
-      })
-
-      listComments.mockReturnValue({
-        data: [
-          {id: 1, body: 'some comment'},
-          {id: 2, body: `### ${title}\n to update`},
-        ],
-      })
-
-      await action.action()
-
-      expect(updateComment.mock.calls[0][0].comment_id).toEqual(2)
-      expect(createComment).toHaveBeenCalledTimes(0)
     })
 
     it('set overall coverage output', async () => {

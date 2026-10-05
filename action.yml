@@ -1,11 +1,11 @@
 name: 'JaCoCo Report'
-description: 'Publishes the JaCoCo report as a comment and/or check run in the Pull Request'
+description: 'Publishes the JaCoCo coverage report as a check run on the Pull Request head commit'
 inputs:
   paths:
     description: 'Comma separated paths of the generated jacoco xml files (supports wildcard glob pattern)'
     required: true
   token:
-    description: Github token to add comments to Pull Request (defaults to automatic token, make sure job permissions allow it to write to pull_requests)
+    description: Github token used to read the changed files and create the check run (defaults to automatic token, make sure the job permissions grant checks write and contents read)
     required: false
     default: ${{ github.token }}
   min-coverage-overall:
@@ -16,43 +16,23 @@ inputs:
     description: 'The minimum code coverage that is required to pass for changed lines'
     required: false
     default: '80'
-  title:
-    description: 'Optional title for the Pull Request comment'
+  check-name:
+    description: 'The name of the check run. The check title shows the overall coverage and, when coverage dropped, the delta (e.g. Overall 69.09% (-1.07%)).'
     required: false
-  update-comment:
-    description: 'Update the coverage report comment instead of creating new ones. Requires title to works properly.'
-    required: false
-    default: 'false'
-  comment-type:
-    description: 'Specifies where to add the comment, whether as a PR comment, workflow summary, both, or none. When none, add-check must be true.'
-    required: false
-    default: 'pr_comment'
-    options:
-      - 'pr_comment'
-      - 'summary'
-      - 'both'
-      - 'none'
-  add-check:
-    description: 'If true, publishes the coverage report as a check run on the head commit (requires checks: write permission). The check title shows the overall coverage and, when coverage dropped, the delta (e.g. Overall 69.09% (-1.07%)).'
-    required: false
-    default: 'false'
+    default: 'JaCoCo Report'
   fail-check-below-threshold:
-    description: 'If true, the check run is marked as failed when overall or changed-lines coverage is below the configured minimum. Requires add-check.'
+    description: 'If true, the check run is marked as failed when overall or changed-lines coverage is below the configured minimum.'
     required: false
     default: 'false'
   pr-number:
-    description: 'The PR number to add the comment to. If not provided, the action will try to get it from the environment.'
+    description: 'The PR whose base and head SHAs are used for comparing changes. Useful for workflow_run, schedule and workflow_dispatch events.'
     required: false
-  skip-if-no-changes:
-    description: "Comment and workflow summary won't be added if there is no coverage information present for the files changed. The check run (add-check) is still published"
-    required: false
-    default: 'false'
   pass-emoji:
-    description: 'Github emoji to use for pass status shown when coverage greater than min coverage (should be a Github supported emoji)'
+    description: 'Github emoji used in the check report for pass status, when coverage is greater than or equal to min coverage (should be a Github supported emoji)'
     required: false
     default: ':green_apple:'
   fail-emoji:
-    description: 'Github emoji to use for fail status shown when coverage lesser than min coverage (should be a Github supported emoji)'
+    description: 'Github emoji used in the check report for fail status, when coverage is lower than min coverage (should be a Github supported emoji)'
     required: false
     default: ':x:'
   continue-on-error:
@@ -64,11 +44,11 @@ inputs:
     required: false
     default: 'INSTRUCTION'
   show-all-modules:
-    description: 'If true, show coverage for all modules in the comment, not just those with changed files'
+    description: 'If true, show coverage for all modules in the check report, not just those with changed files'
     required: false
     default: 'false'
   show-missing-lines:
-    description: 'If true, show the line numbers of uncovered code in the Files table with hyperlinks'
+    description: 'If true, show the line numbers of uncovered code in the Files table of the check report with hyperlinks'
     required: false
     default: 'true'
   debug-mode:

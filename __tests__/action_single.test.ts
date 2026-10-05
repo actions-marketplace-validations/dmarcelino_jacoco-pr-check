@@ -14,9 +14,7 @@ jest.unstable_mockModule('@actions/github', () => mockGithub)
 const action = await import('../src/action')
 
 describe('Single report', function () {
-  let createComment
-  let listComments
-  let updateComment
+  let createCheck
   let output
 
   function getInput(key): string {
@@ -25,10 +23,8 @@ describe('Single report', function () {
         return './__tests__/__fixtures__/report.xml'
       case 'token':
         return 'SMPLEHDjasdf876a987'
-      case 'title':
-        return TITLE
-      case 'comment-type':
-        return 'pr_comment'
+      case 'check-name':
+        return 'JaCoCo Report'
       case 'min-coverage-overall':
         return 45
       case 'min-coverage-changed-lines':
@@ -44,10 +40,39 @@ describe('Single report', function () {
     }
   }
 
+  function checkSummary(): string {
+    return createCheck.mock.calls[0][0].output.summary
+  }
+
+  function mockOctokitWithPullsGet(pullsGet): void {
+    mockGithub.getOctokit.mockReturnValue({
+      rest: {
+        repos: {
+          compareCommits: jest.fn(({base, head}) =>
+            base !== head ? compareCommitsResponse : {data: {files: []}}
+          ),
+        },
+        pulls: {get: pullsGet},
+        checks: {create: createCheck},
+      },
+    })
+  }
+
+  function mockPrNumberInput(): void {
+    mockCore.getInput.mockImplementation(key =>
+      key === 'pr-number' ? '45' : getInput(key)
+    )
+  }
+
+  const pullsGetResponse = (): unknown => ({
+    data: {
+      base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
+      head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
+    },
+  })
+
   beforeEach(() => {
-    createComment = jest.fn()
-    listComments = jest.fn()
-    updateComment = jest.fn()
+    createCheck = jest.fn()
     output = jest.fn()
 
     mockCore.getInput.mockImplementation(getInput)
@@ -62,15 +87,8 @@ describe('Single report', function () {
               return {data: {files: []}}
             }
           }),
-          listPullRequestsAssociatedWithCommit: jest.fn(() => {
-            return {data: []}
-          }),
         },
-        issues: {
-          createComment,
-          listComments,
-          updateComment,
-        },
+        checks: {create: createCheck},
       },
     })
     mockCore.setFailed.mockImplementation(c => {
@@ -124,11 +142,15 @@ describe('Single report', function () {
       },
     }
 
-    it('publish proper comment', async () => {
+    it('publish proper check report on the head commit', async () => {
       initContext(eventName, payload)
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
+      expect(createCheck).toHaveBeenCalledTimes(1)
+      expect(createCheck.mock.calls[0][0].head_sha).toEqual(
+        'aahsdflais76dfa78wrglghjkaghkj'
+      )
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -149,136 +171,8 @@ describe('Single report', function () {
       expect(out).toEqual(['coverage-changed-lines', 38.24])
     })
 
-    describe('With update-comment ON', function () {
-      function mockInput(key): string {
-        switch (key) {
-          case 'update-comment':
-            return 'true'
-          default:
-            return getInput(key)
-        }
-      }
-
-      it('if comment exists, update it', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(key => {
-          return mockInput(key)
-        })
-
-        listComments.mockReturnValue({
-          data: [
-            {id: 1, body: 'some comment'},
-            {id: 2, body: `### ${TITLE}\n to update`},
-          ],
-        })
-
-        await action.action()
-
-        expect(updateComment.mock.calls[0][0].comment_id).toEqual(2)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('if comment does not exist, create new comment', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(key => {
-          return mockInput(key)
-        })
-        listComments.mockReturnValue({
-          data: [{id: 1, body: 'some comment'}],
-        })
-
-        await action.action()
-
-        expect(createComment.mock.calls[0][0].body).not.toBeNull()
-        expect(updateComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('if title not set, warn user and create new comment', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'title':
-              return ''
-            default:
-              return mockInput(c)
-          }
-        })
-
-        listComments.mockReturnValue({
-          data: [
-            {id: 1, body: 'some comment'},
-            {id: 2, body: `### ${TITLE}\n to update`},
-          ],
-        })
-
-        await action.action()
-
-        expect(mockCore.info).toHaveBeenCalledWith(
-          "'title' is not set. 'update-comment' does not work without 'title'"
-        )
-        expect(createComment.mock.calls[0][0].body).not.toBeNull()
-        expect(updateComment).toHaveBeenCalledTimes(0)
-      })
-    })
-
-    describe('Skip if no changes set to true', function () {
-      function mockInput(): void {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'skip-if-no-changes':
-              return 'true'
-            default:
-              return getInput(c)
-          }
-        })
-      }
-
-      it('Add comment when coverage present for changes files', async () => {
-        initContext(eventName, payload)
-        mockInput()
-
-        await action.action()
-
-        expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
-      })
-
-      it("Don't add comment when coverage absent for changes files", async () => {
-        initContext(eventName, payload)
-        mockInput()
-        mockGithub.getOctokit.mockReturnValue({
-          rest: {
-            repos: {
-              compareCommits: jest.fn(() => {
-                return {
-                  data: {
-                    files: [
-                      {
-                        filename: '.github/workflows/coverage.yml',
-                        blob_url:
-                          'https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/.github/workflows/coverage.yml',
-                        patch: PATCH.SINGLE_MODULE.COVERAGE,
-                      },
-                    ],
-                  },
-                }
-              }),
-            },
-            issues: {
-              createComment,
-              listComments,
-              updateComment,
-            },
-          },
-        })
-
-        await action.action()
-
-        expect(createComment).not.toHaveBeenCalled()
-      })
-    })
-
     describe('With custom emoji', function () {
-      it('publish proper comment', async () => {
+      it('publish proper check report', async () => {
         initContext(eventName, payload)
         mockCore.getInput.mockImplementation(key => {
           switch (key) {
@@ -293,8 +187,8 @@ describe('Single report', function () {
 
         await action.action()
 
-        expect(createComment.mock.calls[0][0].body).toEqual(`### JaCoCo Report
-|Overall Project|35.25% **\`-17.21%\`**|red_circle|
+        expect(checkSummary())
+          .toEqual(`|Overall Project|35.25% **\`-17.21%\`**|red_circle|
 |:-|:-|:-:|
 |Changed lines|38.24%|red_circle|
 <br>
@@ -303,67 +197,6 @@ describe('Single report', function () {
 |:-|:-|:-:|
 |[Math.kt](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt)|42% **\`-42%\`**|red_circle|
 |[Utility.java](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/java/com/madrapps/jacoco/Utility.java)|18.03%|:green_circle:|`)
-      })
-    })
-
-    describe('With comment-type present', function () {
-      function mockInput(key): string {
-        switch (key) {
-          case 'comment-type':
-            return 'pr_comment'
-          default:
-            return getInput(key)
-        }
-      }
-
-      it('when comment-type is summary, add the comment as workflow summary', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'summary'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('when comment-type is pr_comment, comment added in pr', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'pr_comment'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(0)
-        expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
-      })
-
-      it('when comment-type is both, add the comment in pr and as workflow summary', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'both'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
-        expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
       })
     })
   })
@@ -382,11 +215,11 @@ describe('Single report', function () {
       },
     }
 
-    it('publish proper comment', async () => {
+    it('publish proper check report', async () => {
       initContext(eventName, payload)
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -400,11 +233,21 @@ describe('Single report', function () {
   })
 
   describe('Push event', function () {
-    const eventName = 'push'
     const payload = {
       before: 'guasft7asdtf78asfd87as6df7y2u3',
       after: 'aahsdflais76dfa78wrglghjkaghkj',
     }
+
+    it('publish proper check report on the pushed commit', async () => {
+      initContext('push', payload)
+
+      await action.action()
+
+      expect(createCheck.mock.calls[0][0].head_sha).toEqual(
+        'aahsdflais76dfa78wrglghjkaghkj'
+      )
+      expect(checkSummary()).toEqual(PROPER_REPORT)
+    })
 
     it('set overall coverage output', async () => {
       initContext('push', payload)
@@ -423,136 +266,18 @@ describe('Single report', function () {
       const out = output.mock.calls[1]
       expect(out).toEqual(['coverage-changed-lines', 38.24])
     })
-
-    describe('With comment-type present', function () {
-      function mockInput(key): string {
-        switch (key) {
-          case 'comment-type':
-            return 'pr_comment'
-          default:
-            return getInput(key)
-        }
-      }
-
-      it('when comment-type is summary, add the comment as workflow summary', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'summary'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('when comment-type is pr_comment, comment not added', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'pr_comment'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(0)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('when comment-type is both, add the comment as workflow summary', async () => {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'comment-type':
-              return 'both'
-            default:
-              return mockInput(c)
-          }
-        })
-        initContext(eventName, payload)
-
-        await action.action()
-        expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
-        expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-    })
-
-    it('when pr-number present, add the comment in pr', async () => {
-      mockCore.getInput.mockImplementation(c => {
-        switch (c) {
-          case 'pr-number':
-            return '45'
-          default:
-            return getInput(c)
-        }
-      })
-      initContext(eventName, payload)
-
-      await action.action()
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
-    })
-
-    it('when pr-number not present and associated PR available from commit, add the comment in pr', async () => {
-      mockCore.getInput.mockImplementation(c => {
-        switch (c) {
-          case 'pr-number':
-            return ''
-          default:
-            return getInput(c)
-        }
-      })
-      mockGithub.getOctokit.mockReturnValue({
-        rest: {
-          repos: {
-            compareCommits: jest.fn(() => {
-              return compareCommitsResponse
-            }),
-            listPullRequestsAssociatedWithCommit: jest.fn(() => {
-              return {data: [{number: 45}]}
-            }),
-          },
-          issues: {
-            createComment,
-            listComments,
-            updateComment,
-          },
-        },
-      })
-      initContext(eventName, payload)
-      await action.action()
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
-    })
   })
 
   describe('Schedule event', function () {
     const eventName = 'schedule'
     const payload = {}
 
-    it('publish project coverage comment', async () => {
-      mockCore.getInput.mockImplementation(key => {
-        switch (key) {
-          case 'comment-type':
-            return 'summary'
-          default:
-            return getInput(key)
-        }
-      })
+    it('publish project coverage check report', async () => {
       initContext(eventName, payload)
 
       await action.action()
 
-      expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(
-        ONLY_PROJECT_COMMENT
-      )
-      expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
+      expect(checkSummary()).toEqual(ONLY_PROJECT_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -565,44 +290,9 @@ describe('Single report', function () {
     })
 
     it('fetches PR SHAs when pr-number is provided', async () => {
-      const pullsGet = jest.fn(() => ({
-        data: {
-          base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
-          head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
-        },
-      }))
-      mockCore.getInput.mockImplementation(key => {
-        switch (key) {
-          case 'pr-number':
-            return '45'
-          case 'comment-type':
-            return 'summary'
-          default:
-            return getInput(key)
-        }
-      })
-      mockGithub.getOctokit.mockReturnValue({
-        rest: {
-          repos: {
-            compareCommits: jest.fn(({base, head}) => {
-              if (base !== head) {
-                return compareCommitsResponse
-              } else {
-                return {data: {files: []}}
-              }
-            }),
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
-          },
-          pulls: {
-            get: pullsGet,
-          },
-          issues: {
-            createComment,
-            listComments,
-            updateComment,
-          },
-        },
-      })
+      const pullsGet = jest.fn(pullsGetResponse)
+      mockPrNumberInput()
+      mockOctokitWithPullsGet(pullsGet)
       initContext(eventName, payload)
 
       await action.action()
@@ -610,7 +300,7 @@ describe('Single report', function () {
       expect(pullsGet).toHaveBeenCalledWith(
         expect.objectContaining({pull_number: 45})
       )
-      expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
   })
 
@@ -618,23 +308,12 @@ describe('Single report', function () {
     const eventName = 'workflow_dispatch'
     const payload = {}
 
-    it('publish project coverage comment', async () => {
-      mockCore.getInput.mockImplementation(key => {
-        switch (key) {
-          case 'comment-type':
-            return 'summary'
-          default:
-            return getInput(key)
-        }
-      })
+    it('publish project coverage check report', async () => {
       initContext(eventName, payload)
 
       await action.action()
 
-      expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(
-        ONLY_PROJECT_COMMENT
-      )
-      expect(mockCore.summary.write).toHaveBeenCalledTimes(1)
+      expect(checkSummary()).toEqual(ONLY_PROJECT_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -647,44 +326,9 @@ describe('Single report', function () {
     })
 
     it('fetches PR SHAs when pr-number is provided', async () => {
-      const pullsGet = jest.fn(() => ({
-        data: {
-          base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
-          head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
-        },
-      }))
-      mockCore.getInput.mockImplementation(key => {
-        switch (key) {
-          case 'pr-number':
-            return '45'
-          case 'comment-type':
-            return 'summary'
-          default:
-            return getInput(key)
-        }
-      })
-      mockGithub.getOctokit.mockReturnValue({
-        rest: {
-          repos: {
-            compareCommits: jest.fn(({base, head}) => {
-              if (base !== head) {
-                return compareCommitsResponse
-              } else {
-                return {data: {files: []}}
-              }
-            }),
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
-          },
-          pulls: {
-            get: pullsGet,
-          },
-          issues: {
-            createComment,
-            listComments,
-            updateComment,
-          },
-        },
-      })
+      const pullsGet = jest.fn(pullsGetResponse)
+      mockPrNumberInput()
+      mockOctokitWithPullsGet(pullsGet)
       initContext(eventName, payload)
 
       await action.action()
@@ -692,7 +336,7 @@ describe('Single report', function () {
       expect(pullsGet).toHaveBeenCalledWith(
         expect.objectContaining({pull_number: 45})
       )
-      expect(mockCore.summary.addRaw.mock.calls[0][0]).toEqual(PROPER_COMMENT)
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
   })
 
@@ -714,57 +358,29 @@ describe('Single report', function () {
       },
     }
 
-    it('when proper payload present, publish proper comment', async () => {
+    it('when proper payload present, publish proper check report', async () => {
       initContext(eventName, payload)
 
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
+      expect(createCheck.mock.calls[0][0].head_sha).toEqual(
+        'aahsdflais76dfa78wrglghjkaghkj'
+      )
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
 
-    it('when payload does not have pull_requests, fetches PR SHAs and publishes comment', async () => {
+    it('when payload does not have pull_requests, fetches PR SHAs and publishes check report', async () => {
+      const pullsGet = jest.fn(pullsGetResponse)
+      mockPrNumberInput()
+      mockOctokitWithPullsGet(pullsGet)
       initContext(eventName, {})
-      mockCore.getInput.mockImplementation(key => {
-        switch (key) {
-          case 'pr-number':
-            return '45'
-          default:
-            return getInput(key)
-        }
-      })
-      mockGithub.getOctokit.mockReturnValue({
-        rest: {
-          repos: {
-            compareCommits: jest.fn(({base, head}) => {
-              if (base !== head) {
-                return compareCommitsResponse
-              } else {
-                return {data: {files: []}}
-              }
-            }),
-            listPullRequestsAssociatedWithCommit: jest.fn(() => {
-              return {data: []}
-            }),
-          },
-          pulls: {
-            get: jest.fn(() => ({
-              data: {
-                base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
-                head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
-              },
-            })),
-          },
-          issues: {
-            createComment,
-            listComments,
-            updateComment,
-          },
-        },
-      })
 
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
+      expect(pullsGet).toHaveBeenCalledWith(
+        expect.objectContaining({pull_number: 45})
+      )
+      expect(checkSummary()).toEqual(PROPER_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -797,13 +413,8 @@ describe('Single report', function () {
         rest: {
           repos: {
             compareCommits,
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
           },
-          issues: {
-            createComment: jest.fn(),
-            listComments: jest.fn(),
-            updateComment: jest.fn(),
-          },
+          checks: {create: jest.fn()},
         },
       })
       mockCore.getInput.mockImplementation(key => {
@@ -832,13 +443,8 @@ describe('Single report', function () {
         rest: {
           repos: {
             compareCommits,
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
           },
-          issues: {
-            createComment: jest.fn(),
-            listComments: jest.fn(),
-            updateComment: jest.fn(),
-          },
+          checks: {create: jest.fn()},
         },
       })
       mockCore.getInput.mockImplementation(key => {
@@ -867,13 +473,8 @@ describe('Single report', function () {
         rest: {
           repos: {
             compareCommits,
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
           },
-          issues: {
-            createComment: jest.fn(),
-            listComments: jest.fn(),
-            updateComment: jest.fn(),
-          },
+          checks: {create: jest.fn()},
         },
       })
       mockCore.getInput.mockImplementation(key => {
@@ -907,13 +508,8 @@ describe('Single report', function () {
         rest: {
           repos: {
             compareCommits,
-            listPullRequestsAssociatedWithCommit: jest.fn(() => ({data: []})),
           },
-          issues: {
-            createComment: jest.fn(),
-            listComments: jest.fn(),
-            updateComment: jest.fn(),
-          },
+          checks: {create: jest.fn()},
         },
       })
       initContext(eventName, payload)
@@ -925,30 +521,6 @@ describe('Single report', function () {
           base: 'base-sha-from-payload',
           head: 'head-sha-from-payload',
         })
-      )
-    })
-  })
-
-  describe('Deprecated inputs', function () {
-    it('Fail when min-coverage-changed-files is used', async () => {
-      initContext('pull_request', {
-        pull_request: {
-          number: '45',
-          base: {sha: 'guasft7asdtf78asfd87as6df7y2u3'},
-          head: {sha: 'aahsdflais76dfa78wrglghjkaghkj'},
-        },
-      })
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      mockCore.setFailed.mockImplementation(() => {})
-      mockCore.getInput.mockImplementation(key => {
-        if (key === 'min-coverage-changed-files') return '60'
-        return getInput(key)
-      })
-
-      await action.action()
-
-      expect(mockCore.setFailed).toHaveBeenCalledWith(
-        "'min-coverage-changed-files' is no longer supported. Please use 'min-coverage-changed-lines' instead."
       )
     })
   })
@@ -1007,10 +579,7 @@ function initContext(eventName, payload): void {
   mockContext.owner = 'madrapps'
 }
 
-const TITLE = 'JaCoCo Report'
-
-const PROPER_COMMENT = `### JaCoCo Report
-|Overall Project|35.25% **\`-17.21%\`**|:x:|
+const PROPER_REPORT = `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
 <br>
@@ -1020,8 +589,7 @@ const PROPER_COMMENT = `### JaCoCo Report
 |[Math.kt](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/kotlin/com/madrapps/jacoco/Math.kt)|42% **\`-42%\`**|:x:|
 |[Utility.java](https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/src/main/java/com/madrapps/jacoco/Utility.java)|18.03%|:green_apple:|`
 
-const ONLY_PROJECT_COMMENT = `### JaCoCo Report
-|Overall Project|35.25%|:x:|
+const ONLY_PROJECT_REPORT = `|Overall Project|35.25%|:x:|
 |:-|:-|:-:|
 
 > There is no coverage information present for the changed lines`

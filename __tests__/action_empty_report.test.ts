@@ -14,9 +14,7 @@ jest.unstable_mockModule('@actions/github', () => mockGithub)
 const action = await import('../src/action')
 
 describe('Single Empty report', function () {
-  let createComment
-  let listComments
-  let updateComment
+  let createCheck
   let output
 
   function getInput(key): string {
@@ -25,8 +23,8 @@ describe('Single Empty report', function () {
         return './__tests__/__fixtures__/empty-report.xml'
       case 'token':
         return 'SMPLEHDjasdf876a987'
-      case 'comment-type':
-        return 'pr_comment'
+      case 'check-name':
+        return 'JaCoCo Report'
       case 'min-coverage-overall':
         return 45
       case 'min-coverage-changed-lines':
@@ -43,9 +41,7 @@ describe('Single Empty report', function () {
   }
 
   beforeEach(() => {
-    createComment = jest.fn()
-    listComments = jest.fn()
-    updateComment = jest.fn()
+    createCheck = jest.fn()
     output = jest.fn()
 
     mockCore.getInput.mockImplementation(getInput)
@@ -56,15 +52,8 @@ describe('Single Empty report', function () {
           compareCommits: jest.fn(() => {
             return compareCommitsResponse
           }),
-          listPullRequestsAssociatedWithCommit: jest.fn(() => {
-            return {data: []}
-          }),
         },
-        issues: {
-          createComment,
-          listComments,
-          updateComment,
-        },
+        checks: {create: createCheck},
       },
     })
     mockCore.setFailed.mockImplementation(c => {
@@ -117,11 +106,11 @@ describe('Single Empty report', function () {
       },
     }
 
-    it('publish proper comment', async () => {
+    it('publish proper check report', async () => {
       initContext(eventName, payload)
       await action.action()
 
-      expect(createComment.mock.calls[0][0].body).toEqual(PROPER_COMMENT)
+      expect(createCheck.mock.calls[0][0].output.summary).toEqual(PROPER_REPORT)
     })
 
     it('set overall coverage output', async () => {
@@ -142,140 +131,8 @@ describe('Single Empty report', function () {
       expect(out).toEqual(['coverage-changed-lines', 100])
     })
 
-    describe('With update-comment ON', function () {
-      const title = 'JaCoCo Report'
-
-      function mockInput(key): string {
-        switch (key) {
-          case 'title':
-            return title
-          case 'update-comment':
-            return 'true'
-          default:
-            return getInput(key)
-        }
-      }
-
-      it('if comment exists, update it', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(key => {
-          return mockInput(key)
-        })
-
-        listComments.mockReturnValue({
-          data: [
-            {id: 1, body: 'some comment'},
-            {id: 2, body: `### ${title}\n to update`},
-          ],
-        })
-
-        await action.action()
-
-        expect(updateComment.mock.calls[0][0].comment_id).toEqual(2)
-        expect(createComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('if comment does not exist, create new comment', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(key => {
-          return mockInput(key)
-        })
-        listComments.mockReturnValue({
-          data: [{id: 1, body: 'some comment'}],
-        })
-
-        await action.action()
-
-        expect(createComment.mock.calls[0][0].body).not.toBeNull()
-        expect(updateComment).toHaveBeenCalledTimes(0)
-      })
-
-      it('if title not set, warn user and create new comment', async () => {
-        initContext(eventName, payload)
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'title':
-              return ''
-            default:
-              return mockInput(c)
-          }
-        })
-
-        listComments.mockReturnValue({
-          data: [
-            {id: 1, body: 'some comment'},
-            {id: 2, body: `### ${title}\n to update`},
-          ],
-        })
-
-        await action.action()
-
-        expect(mockCore.info).toHaveBeenCalledWith(
-          "'title' is not set. 'update-comment' does not work without 'title'"
-        )
-        expect(createComment.mock.calls[0][0].body).not.toBeNull()
-        expect(updateComment).toHaveBeenCalledTimes(0)
-      })
-    })
-
-    describe('Skip if no changes set to true', function () {
-      function mockInput(): void {
-        mockCore.getInput.mockImplementation(c => {
-          switch (c) {
-            case 'skip-if-no-changes':
-              return 'true'
-            default:
-              return getInput(c)
-          }
-        })
-      }
-
-      it("Don't add comment when report is empty", async () => {
-        initContext(eventName, payload)
-        mockInput()
-
-        await action.action()
-
-        expect(createComment).not.toHaveBeenCalled()
-      })
-
-      it("Don't add comment when coverage absent for changes files", async () => {
-        initContext(eventName, payload)
-        mockInput()
-        mockGithub.getOctokit.mockReturnValue({
-          rest: {
-            repos: {
-              compareCommits: jest.fn(() => {
-                return {
-                  data: {
-                    files: [
-                      {
-                        filename: '.github/workflows/coverage.yml',
-                        blob_url:
-                          'https://github.com/thsaravana/jacoco-playground/blob/14a554976c0e5909d8e69bc8cce72958c49a7dc5/.github/workflows/coverage.yml',
-                        patch: PATCH.SINGLE_MODULE.COVERAGE,
-                      },
-                    ],
-                  },
-                }
-              }),
-            },
-            issues: {
-              createComment,
-              listComments,
-              updateComment,
-            },
-          },
-        })
-
-        await action.action()
-
-        expect(createComment).not.toHaveBeenCalled()
-      })
-    })
-
     describe('With custom emoji', function () {
-      it('publish proper comment', async () => {
+      it('publish proper check report', async () => {
         initContext(eventName, payload)
         mockCore.getInput.mockImplementation(key => {
           switch (key) {
@@ -290,7 +147,7 @@ describe('Single Empty report', function () {
 
         await action.action()
 
-        expect(createComment.mock.calls[0][0].body).toEqual(
+        expect(createCheck.mock.calls[0][0].output.summary).toEqual(
           `> There is no coverage information present for the changed lines`
         )
       })
@@ -363,4 +220,4 @@ function initContext(eventName, payload): void {
   mockContext.repo = {owner: 'madrapps', repo: 'jacoco-playground'}
 }
 
-const PROPER_COMMENT = `> There is no coverage information present for the changed lines`
+const PROPER_REPORT = `> There is no coverage information present for the changed lines`

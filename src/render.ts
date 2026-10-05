@@ -12,17 +12,15 @@ import {CoverageCounterType} from './models/jacoco-types.js'
 const coverageAbsent =
   '> There is no coverage information present for the changed lines'
 
-export function getPRComment(
+export function getReport(
   project: Project,
   minCoverage: MinCoverage,
-  title: string,
   emoji: Emoji,
   showMissingLines = false,
   coverageCounterType: CoverageCounterType = 'INSTRUCTION'
 ): string {
-  const heading = getTitle(title)
   if (!project.overall) {
-    return `${heading + coverageAbsent}`
+    return coverageAbsent
   }
   const overallTable = getOverallTable(
     project.overall,
@@ -46,7 +44,7 @@ export function getPRComment(
         ? `${moduleTable}\n\n${filesTable}`
         : filesTable
 
-  return `${heading + overallTable}\n\n${tables}`
+  return `${overallTable}\n\n${tables}`
 }
 
 const MODULE_COLLAPSE_THRESHOLD = 10
@@ -275,15 +273,6 @@ export function shouldShow(value: number | null): boolean {
   if (value === null) return false
   const rounded = Math.abs(round(value))
   return rounded !== 0 && rounded !== 100
-}
-
-export function getTitle(title?: string): string {
-  if (title != null && title.trim().length > 0) {
-    const trimmed = title.trim()
-    return trimmed.startsWith('#') ? `${trimmed}\n` : `### ${trimmed}\n`
-  } else {
-    return ''
-  }
 }
 
 function getStatus(
