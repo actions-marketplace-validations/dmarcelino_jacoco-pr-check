@@ -1,6 +1,6 @@
-# jacoco-pr-checks
+# jacoco-pr-check
 
-[![Tests](https://github.com/dmarcelino/jacoco-pr-checks/actions/workflows/check.yml/badge.svg)](https://github.com/dmarcelino/jacoco-pr-checks/actions/workflows/check.yml)
+[![Tests](https://github.com/dmarcelino/jacoco-pr-check/actions/workflows/check.yml/badge.svg)](https://github.com/dmarcelino/jacoco-pr-check/actions/workflows/check.yml)
 
 A Github action that publishes the JaCoCo coverage report as a check run on the Pull Request head commit, with
 customizable pass percentages for the overall project and the changed lines. The check details show the coverage of
@@ -78,7 +78,7 @@ jobs:
 
       - name: Publish coverage check
         id: jacoco
-        uses: dmarcelino/jacoco-pr-checks@v0.1
+        uses: dmarcelino/jacoco-pr-check@v0.1
         with:
           paths: |
             ${{ github.workspace }}/**/build/reports/jacoco/prodNormalDebugCoverage/prodNormalDebugCoverage.xml,
@@ -112,7 +112,7 @@ jobs:
    ```yaml
    - name: Publish coverage check
      id: jacoco
-     uses: dmarcelino/jacoco-pr-checks@v0.1
+     uses: dmarcelino/jacoco-pr-check@v0.1
      with:
        paths: ${{ github.workspace }}/build/reports/jacoco/testCoverage/testCoverage.xml
        min-coverage-overall: 80
@@ -140,7 +140,7 @@ jobs:
    ```yaml
    - name: Publish coverage check
      id: jacoco
-     uses: dmarcelino/jacoco-pr-checks@v0.1
+     uses: dmarcelino/jacoco-pr-check@v0.1
      with:
        paths: |
          ${{ github.workspace }}/**/build/reports/jacoco/**/prodNormalDebugCoverage.xml,
@@ -157,7 +157,7 @@ jobs:
    ```yaml
    - name: Publish coverage check
      id: jacoco
-     uses: dmarcelino/jacoco-pr-checks@v0.1
+     uses: dmarcelino/jacoco-pr-check@v0.1
      with:
        paths: ${{ github.workspace }}/build/reports/jacoco/testCoverage/testCoverage.xml
        check-name: Code Coverage

@@ -1,5 +1,5 @@
 {
-  "name": "jacoco-pr-checks",
+  "name": "jacoco-pr-check",
   "version": "0.1.0",
   "description": "Github action that publishes the JaCoCo report as a check run on the Pull Request",
   "type": "module",
@@ -23,15 +23,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dmarcelino/jacoco-pr-checks.git"
+    "url": "git+https://github.com/dmarcelino/jacoco-pr-check.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/dmarcelino/jacoco-pr-checks/issues"
+    "url": "https://github.com/dmarcelino/jacoco-pr-check/issues"
   },
-  "homepage": "https://github.com/dmarcelino/jacoco-pr-checks#readme",
+  "homepage": "https://github.com/dmarcelino/jacoco-pr-check#readme",
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
