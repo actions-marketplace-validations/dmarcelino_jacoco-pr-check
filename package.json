@@ -27,7 +27,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/dmarcelino/jacoco-pr-check/issues"
   },

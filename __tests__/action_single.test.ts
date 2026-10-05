@@ -191,7 +191,6 @@ describe('Single report', function () {
           .toEqual(`|Overall Project|35.25% **\`-17.21%\`**|red_circle|
 |:-|:-|:-:|
 |Changed lines|38.24%|red_circle|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|
@@ -813,7 +812,6 @@ function initContext(eventName, payload): void {
 const PROPER_REPORT = `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|

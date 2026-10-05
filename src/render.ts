@@ -276,12 +276,9 @@ function getOverallTable(
       minCoverage.changed,
       emoji
     )
-    changedCoverageRow =
-      '\n' +
-      `|Changed lines|${formatCoverage(
-        changedLinesPercentage
-      )}|${changedLinesStatus}|` +
-      '\n<br>'
+    changedCoverageRow = `\n|Changed lines|${formatCoverage(
+      changedLinesPercentage
+    )}|${changedLinesStatus}|`
   }
   return `${tableHeader}\n${tableStructure}${changedCoverageRow}`
 }
