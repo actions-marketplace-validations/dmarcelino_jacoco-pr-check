@@ -727,6 +727,25 @@ describe('process', function () {
     })
   })
 
+  describe('nested groups', function () {
+    it('reports changed files of packages inside nested groups', async () => {
+      const report = await getReport(
+        './__tests__/__fixtures__/reports/group/group_with_nested_package.xml'
+      )
+      const changedFiles: ChangedFile[] = [
+        {
+          filePath: 'src/main/java/com/example/Nested.java',
+          url: 'https://github.com/o/r/blob/sha/src/main/java/com/example/Nested.java',
+          lines: [3, 4],
+        },
+      ]
+      const actual = process.getProjectCoverage([report], changedFiles)
+      expect(actual.modules.map(m => m.name)).toEqual(['Child'])
+      expect(actual.modules[0].files[0].name).toEqual('Nested.java')
+      expect(actual.changed).toEqual({covered: 2, missed: 3, percentage: 40})
+    })
+  })
+
   describe('edge cases', function () {
     it('returns null overall coverage for empty reports array', () => {
       const actual = process.getProjectCoverage([], [])

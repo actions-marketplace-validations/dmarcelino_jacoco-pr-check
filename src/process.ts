@@ -71,14 +71,10 @@ function toFloat(value: number): number {
 function getModulesFromReports(reports: Report[]): LocalModule[] {
   const modules: LocalModule[] = []
   for (const report of reports) {
-    const groupTag = report.group
-    if (groupTag) {
-      const groups = groupTag.filter(group => group !== undefined)
-      for (const group of groups) {
-        const module = getModuleFromParent(group, report.filePath)
-        if (module) {
-          modules.push(module)
-        }
+    for (const group of getAllGroups(report.group ?? [])) {
+      const module = getModuleFromParent(group, report.filePath)
+      if (module) {
+        modules.push(module)
       }
     }
     const module = getModuleFromParent(report, report.filePath)
@@ -88,6 +84,10 @@ function getModulesFromReports(reports: Report[]): LocalModule[] {
   }
   disambiguateModuleNames(modules)
   return modules
+}
+
+function getAllGroups(groups: Group[]): Group[] {
+  return groups.flatMap(group => [group, ...getAllGroups(group.group ?? [])])
 }
 
 interface LocalModule {

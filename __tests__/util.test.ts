@@ -256,6 +256,16 @@ describe('Util', function () {
         'Invalid report'
       )
     })
+
+    it('keeps packages of nested groups', async () => {
+      const report = await getReport(
+        './__tests__/__fixtures__/reports/group/group_with_nested_package.xml'
+      )
+      const child = report.group?.[0].group?.[0]
+      expect(child?.name).toEqual('Child')
+      expect(child?.package?.[0].name).toEqual('com/example')
+      expect(child?.package?.[0].sourcefile?.[0].name).toEqual('Nested.java')
+    })
   })
 })
 
