@@ -62,4 +62,39 @@ describe('parseInputs', function () {
       expect.stringContaining("'coverage-counter-type' BOGUS is invalid")
     )
   })
+
+  it.each(['abc', '150', '-1'])(
+    'fails when min-coverage-overall is %s',
+    function (value) {
+      withInputs({'min-coverage-overall': value})
+      expect(parseInputs()).toBeUndefined()
+      expect(mockCore.setFailed).toHaveBeenCalledWith(
+        `'min-coverage-overall' ${value} is invalid. It must be a number between 0 and 100`
+      )
+    }
+  )
+
+  it('fails when min-coverage-changed-lines is not a number', function () {
+    withInputs({'min-coverage-changed-lines': '80%'})
+    expect(parseInputs()).toBeUndefined()
+    expect(mockCore.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("'min-coverage-changed-lines' 80% is invalid")
+    )
+  })
+
+  it('fails when a boolean input is not a boolean', function () {
+    withInputs({'debug-mode': 'yes'})
+    expect(parseInputs()).toBeUndefined()
+    expect(mockCore.setFailed).toHaveBeenCalledWith(
+      "'debug-mode' yes is invalid. It must be true or false"
+    )
+  })
+
+  it('accepts YAML boolean spellings', function () {
+    withInputs({'continue-on-error': 'False', 'show-all-modules': 'TRUE'})
+    expect(parseInputs()).toMatchObject({
+      continueOnError: false,
+      showAllModules: true,
+    })
+  })
 })

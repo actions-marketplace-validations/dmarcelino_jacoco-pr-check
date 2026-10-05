@@ -122,7 +122,6 @@ describe('Multiple Empty reports', function () {
         .toEqual(`|Overall Project|15.85% **\`-14.75%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|0%|:x:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|

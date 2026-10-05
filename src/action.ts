@@ -28,84 +28,27 @@ export async function action(): Promise<void> {
       core.info(`inputs: ${debug({...inputs, token: '***'})}`)
     }
 
-    const parsedPrNumber = parseInt(inputs.prNumber, 10)
-    const prNumber: number | undefined =
-      Number.isInteger(parsedPrNumber) && parsedPrNumber > 0
-        ? parsedPrNumber
-        : undefined
-
     const client = github.getOctokit(token)
-
-    const sha = github.context.sha
-    let base: string = sha
-    let head: string = sha
-    switch (event) {
-      case 'pull_request':
-      case 'pull_request_target':
-        base = github.context.payload.pull_request?.base.sha
-        head = github.context.payload.pull_request?.head.sha
-        break
-      case 'push':
-        base = github.context.payload.before
-        head = github.context.payload.after
-        break
-      case 'workflow_dispatch':
-      case 'schedule':
-        break
-      case 'workflow_run':
-        const pullRequests =
-          github.context.payload?.workflow_run?.pull_requests ?? []
-        if (pullRequests.length !== 0) {
-          base = pullRequests[0]?.base?.sha
-          head = pullRequests[0]?.head?.sha
-        }
-        break
-      default:
-        core.setFailed(
-          `The event ${github.context.eventName} is not supported.`
-        )
-        return
-    }
-
-    const headShaInput = inputs.headSha
-    const baseShaInput = inputs.baseSha
-    switch (event) {
-      case 'pull_request':
-      case 'pull_request_target':
-      case 'workflow_run':
-        if (headShaInput || baseShaInput) {
-          if (headShaInput) head = headShaInput
-          if (baseShaInput) base = baseShaInput
-        } else if (prNumber) {
-          const pr = await client.rest.pulls.get({
-            owner: github.context.repo.owner,
-            repo: github.context.repo.repo,
-            pull_number: prNumber,
-          })
-          base = pr.data.base.sha
-          head = pr.data.head.sha
-        }
-        break
-      case 'workflow_dispatch':
-      case 'schedule':
-        if (prNumber) {
-          const pr = await client.rest.pulls.get({
-            owner: github.context.repo.owner,
-            repo: github.context.repo.repo,
-            pull_number: prNumber,
-          })
-          base = pr.data.base.sha
-          head = pr.data.head.sha
-        }
-        break
-    }
+    const {base, head, prNumber} = await resolveCommits(
+      event,
+      parsePrNumber(inputs.prNumber),
+      inputs.headSha,
+      inputs.baseSha,
+      client
+    )
 
     core.info(`base sha: ${base}`)
     core.info(`head sha: ${head}`)
     if (debugMode) core.info(`context: ${debug(github.context)}`)
     if (debugMode) core.info(`reportPaths: ${reportPaths}`)
 
-    const changedFiles = await getChangedFiles(base, head, client, debugMode)
+    const changedFiles = await getChangedFiles(
+      base,
+      head,
+      prNumber,
+      client,
+      debugMode
+    )
     if (debugMode) core.info(`changedFiles: ${debug(changedFiles)}`)
 
     const reportsJsonAsync = getJsonReports(reportPaths, debugMode)
@@ -131,7 +74,11 @@ export async function action(): Promise<void> {
       client,
       name: inputs.checkName,
       headSha: head,
-      status: getCoverageStatus(project, inputs.minCoverage),
+      status: getCoverageStatus(
+        project,
+        inputs.minCoverage,
+        coverageCounterType
+      ),
       body: getReport(
         project,
         inputs.minCoverage,
@@ -142,17 +89,96 @@ export async function action(): Promise<void> {
       failBelowThreshold: inputs.failCheckBelowThreshold,
       debugMode,
     })
-  } catch (error) {
-    if (error instanceof MissingChecksPermissionError) {
+  } catch (thrown) {
+    const error = thrown instanceof Error ? thrown : new Error(String(thrown))
+    if (error instanceof MissingChecksPermissionError || !continueOnError) {
       core.setFailed(error)
-    } else if (error instanceof Error) {
-      if (continueOnError) {
-        core.error(error)
-      } else {
-        core.setFailed(error)
-      }
+    } else {
+      core.error(error)
     }
   }
+}
+
+const ZERO_SHA = /^0+$/
+
+function parsePrNumber(value: string | number | undefined): number | undefined {
+  const parsed = parseInt(String(value ?? ''), 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+interface Commits {
+  base: string
+  head: string
+  prNumber?: number
+}
+
+async function resolveCommits(
+  event: string,
+  prNumberInput: number | undefined,
+  headShaInput: string,
+  baseShaInput: string,
+  client: InstanceType<typeof GitHub>
+): Promise<Commits> {
+  const payload = github.context.payload
+  const sha = github.context.sha
+  let commits: Commits
+  switch (event) {
+    case 'pull_request':
+    case 'pull_request_target':
+      commits = {
+        base: payload.pull_request?.base.sha,
+        head: payload.pull_request?.head.sha,
+        prNumber: parsePrNumber(payload.pull_request?.number),
+      }
+      break
+    case 'push':
+      // A head-sha/base-sha/pr-number input does not apply to push events
+      return {
+        // The first push of a branch has no previous commit to compare with
+        base: ZERO_SHA.test(payload.before ?? '')
+          ? (payload.repository?.default_branch ?? payload.after)
+          : payload.before,
+        head: payload.after,
+      }
+    case 'workflow_dispatch':
+    case 'schedule':
+      commits = {base: sha, head: sha}
+      break
+    case 'workflow_run': {
+      const pullRequest = payload.workflow_run?.pull_requests?.[0]
+      commits = pullRequest
+        ? {
+            base: pullRequest.base?.sha,
+            head: pullRequest.head?.sha,
+            prNumber: parsePrNumber(pullRequest.number),
+          }
+        : // Fork PRs have no pull_requests: sha is the default branch head
+          {base: sha, head: payload.workflow_run?.head_sha ?? sha}
+      break
+    }
+    default:
+      throw new Error(`The event ${event} is not supported.`)
+  }
+
+  if (headShaInput || baseShaInput) {
+    return {
+      base: baseShaInput || commits.base,
+      head: headShaInput || commits.head,
+      prNumber: prNumberInput ?? commits.prNumber,
+    }
+  }
+  if (prNumberInput) {
+    const pr = await client.rest.pulls.get({
+      ...github.context.repo,
+      pull_number: prNumberInput,
+    })
+    return {
+      base: pr.data.base.sha,
+      head: pr.data.head.sha,
+      prNumber: prNumberInput,
+    }
+  }
+  return commits
 }
 
 async function getJsonReports(
@@ -162,6 +188,9 @@ async function getJsonReports(
   const globber = await glob.create(xmlPaths.join('\n'))
   const files = await globber.glob()
   if (debugMode) core.info(`Resolved files: ${files}`)
+  if (files.length === 0) {
+    throw new Error(`No JaCoCo report matched paths: ${xmlPaths.join(', ')}`)
+  }
 
   return Promise.all(
     files.map(async filePath => {
@@ -174,9 +203,13 @@ async function getJsonReports(
   )
 }
 
+// compareCommits returns at most this many files
+const COMPARE_FILES_LIMIT = 300
+
 async function getChangedFiles(
   base: string,
   head: string,
+  prNumber: number | undefined,
   client: InstanceType<typeof GitHub>,
   debugMode: boolean
 ): Promise<ChangedFile[]> {
@@ -187,16 +220,43 @@ async function getChangedFiles(
     repo: github.context.repo.repo,
   })
 
+  let files: DiffFile[] = response.data.files ?? []
+  if (files.length >= COMPARE_FILES_LIMIT) {
+    if (prNumber) {
+      files = await client.paginate(client.rest.pulls.listFiles, {
+        ...github.context.repo,
+        pull_number: prNumber,
+        per_page: 100,
+      })
+    } else {
+      core.warning(
+        `The comparison lists only the first ${COMPARE_FILES_LIMIT} changed files, so the rest are not counted. Set pr-number to read all files of a pull request.`
+      )
+    }
+  }
+
   const changedFiles: ChangedFile[] = []
-  const files = response.data.files ?? []
   for (const file of files) {
     if (debugMode) core.info(`file: ${debug(file)}`)
-    const changedFile: ChangedFile = {
+    // GitHub leaves out the patch of a diff that is too large
+    if (!file.patch && file.status !== 'removed' && (file.changes ?? 0) > 0) {
+      core.warning(
+        `The diff of ${file.filename} is too large to read, so its changed lines are not counted.`
+      )
+    }
+    changedFiles.push({
       filePath: file.filename,
       url: file.blob_url,
       lines: getChangedLines(file.patch),
-    }
-    changedFiles.push(changedFile)
+    })
   }
   return changedFiles
+}
+
+interface DiffFile {
+  filename: string
+  blob_url: string
+  status?: string
+  changes?: number
+  patch?: string
 }

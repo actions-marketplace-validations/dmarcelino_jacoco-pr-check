@@ -727,6 +727,67 @@ describe('process', function () {
     })
   })
 
+  describe('changed file matching', function () {
+    it('requires the package path to start at a directory boundary', async () => {
+      const reports = await getSingleReports()
+      const mathFile = CHANGED_FILE.SINGLE_MODULE.find(file =>
+        file.filePath.endsWith('Math.kt')
+      ) as ChangedFile
+      const changedFiles: ChangedFile[] = [
+        {
+          ...mathFile,
+          filePath: 'src/main/kotlin/xcom/madrapps/jacoco/Math.kt',
+        },
+      ]
+      const actual = process.getProjectCoverage(reports, changedFiles)
+      expect(actual.modules).toEqual([])
+    })
+
+    it('counts a source file shared by two modules only in the module containing it', async () => {
+      const reportPath =
+        './__tests__/__fixtures__/multi_module/textCoverage.xml'
+      const workspace = globalThis.process.cwd()
+      const reportA = await getReport(reportPath)
+      reportA.filePath = `${workspace}/a/build/reports/jacoco/debug.xml`
+      const reportB = await getReport(reportPath)
+      reportB.filePath = `${workspace}/b/build/reports/jacoco/debug.xml`
+
+      const stringOp = CHANGED_FILE.MULTI_MODULE.find(file =>
+        file.filePath.endsWith('StringOp.java')
+      ) as ChangedFile
+      const changedFiles: ChangedFile[] = [
+        {
+          ...stringOp,
+          filePath: 'b/src/main/java/com/madrapps/text/StringOp.java',
+        },
+      ]
+      const actual = process.getProjectCoverage(
+        [reportA, reportB],
+        changedFiles
+      )
+      expect(actual.modules.map(m => m.name)).toEqual([':b'])
+    })
+  })
+
+  describe('nested groups', function () {
+    it('reports changed files of packages inside nested groups', async () => {
+      const report = await getReport(
+        './__tests__/__fixtures__/reports/group/group_with_nested_package.xml'
+      )
+      const changedFiles: ChangedFile[] = [
+        {
+          filePath: 'src/main/java/com/example/Nested.java',
+          url: 'https://github.com/o/r/blob/sha/src/main/java/com/example/Nested.java',
+          lines: [3, 4],
+        },
+      ]
+      const actual = process.getProjectCoverage([report], changedFiles)
+      expect(actual.modules.map(m => m.name)).toEqual(['Child'])
+      expect(actual.modules[0].files[0].name).toEqual('Nested.java')
+      expect(actual.changed).toEqual({covered: 2, missed: 3, percentage: 40})
+    })
+  })
+
   describe('edge cases', function () {
     it('returns null overall coverage for empty reports array', () => {
       const actual = process.getProjectCoverage([], [])

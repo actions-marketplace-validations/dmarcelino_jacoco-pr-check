@@ -1,5 +1,4 @@
 import * as core from '@actions/core'
-import {parseBooleans} from 'xml2js/lib/processors'
 import {Emoji, MinCoverage} from './models/project.js'
 import {
   CoverageCounterType,
@@ -49,28 +48,62 @@ export function parseInputs(): Inputs | undefined {
     return undefined
   }
 
-  return {
-    token,
-    reportPaths: pathsString.split(','),
-    minCoverage: {
-      overall: parseFloat(core.getInput('min-coverage-overall')),
-      changed: parseFloat(core.getInput('min-coverage-changed-lines')),
-    },
-    checkName: core.getInput('check-name'),
-    prNumber: core.getInput('pr-number'),
-    headSha: core.getInput('head-sha'),
-    baseSha: core.getInput('base-sha'),
-    showAllModules: parseBooleans(core.getInput('show-all-modules')),
-    showMissingLines: parseBooleans(core.getInput('show-missing-lines')),
-    emoji: {
-      pass: core.getInput('pass-emoji'),
-      fail: core.getInput('fail-emoji'),
-    },
-    continueOnError: parseBooleans(core.getInput('continue-on-error')),
-    debugMode: parseBooleans(core.getInput('debug-mode')),
-    coverageCounterType,
-    failCheckBelowThreshold: parseBooleans(
-      core.getInput('fail-check-below-threshold')
-    ),
+  try {
+    return {
+      token,
+      reportPaths: pathsString.split(','),
+      minCoverage: {
+        overall: getPercentageInput('min-coverage-overall'),
+        changed: getPercentageInput('min-coverage-changed-lines'),
+      },
+      checkName: core.getInput('check-name'),
+      prNumber: core.getInput('pr-number'),
+      headSha: core.getInput('head-sha'),
+      baseSha: core.getInput('base-sha'),
+      showAllModules: getBooleanInput('show-all-modules'),
+      showMissingLines: getBooleanInput('show-missing-lines'),
+      emoji: {
+        pass: core.getInput('pass-emoji'),
+        fail: core.getInput('fail-emoji'),
+      },
+      continueOnError: getBooleanInput('continue-on-error'),
+      debugMode: getBooleanInput('debug-mode'),
+      coverageCounterType,
+      failCheckBelowThreshold: getBooleanInput('fail-check-below-threshold'),
+    }
+  } catch (error) {
+    if (!(error instanceof InvalidInputError)) throw error
+    core.setFailed(error.message)
+    return undefined
   }
+}
+
+class InvalidInputError extends Error {}
+
+function getPercentageInput(name: string): number {
+  const value = String(core.getInput(name) ?? '').trim()
+  const percentage = Number(value)
+  if (!value || isNaN(percentage) || percentage < 0 || percentage > 100) {
+    throw new InvalidInputError(
+      `'${name}' ${value} is invalid. It must be a number between 0 and 100`
+    )
+  }
+  return percentage
+}
+
+const TRUE_VALUES = ['true', 'True', 'TRUE']
+const FALSE_VALUES = ['false', 'False', 'FALSE']
+
+/**
+ * Reads a YAML 1.2 boolean. An empty value is false: GitHub fills in the
+ * action.yml default when an input is not set, so it is only empty when
+ * explicitly set to ''.
+ */
+function getBooleanInput(name: string): boolean {
+  const value = String(core.getInput(name) ?? '').trim()
+  if (!value || FALSE_VALUES.includes(value)) return false
+  if (TRUE_VALUES.includes(value)) return true
+  throw new InvalidInputError(
+    `'${name}' ${value} is invalid. It must be true or false`
+  )
 }

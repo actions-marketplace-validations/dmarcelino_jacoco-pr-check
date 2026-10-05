@@ -159,7 +159,6 @@ describe('Check run publishing', function () {
 const CHECK_BODY = `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|32.26%|:x:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|

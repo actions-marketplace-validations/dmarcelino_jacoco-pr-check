@@ -205,11 +205,14 @@ describe('Single Empty report', function () {
   describe('Other than push or pull_request or pull_request_target event', function () {
     it('Fail by throwing appropriate error', async () => {
       initContext('pr_review', {})
-      mockCore.setFailed.mockImplementation(c => {
-        expect(c).toEqual('The event pr_review is not supported.')
-      })
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      mockCore.setFailed.mockImplementation(() => {})
 
       await action.action()
+
+      const reported =
+        mockCore.setFailed.mock.calls[0]?.[0] ?? mockCore.error.mock.calls[0][0]
+      expect(reported.message).toEqual('The event pr_review is not supported.')
     })
   })
 })

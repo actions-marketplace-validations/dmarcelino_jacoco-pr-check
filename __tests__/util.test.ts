@@ -50,6 +50,13 @@ describe('Util', function () {
       const changedLines = util.getChangedLines(patch)
       expect(changedLines).toEqual([6, 17, 18, 19, 20, 21])
     })
+
+    it('no newline marker in the middle of a group does not shift lines', async () => {
+      const patch =
+        '@@ -1,2 +1,3 @@\n a\n-b\n\\ No newline at end of file\n+b\n+c'
+      const changedLines = util.getChangedLines(patch)
+      expect(changedLines).toEqual([2, 3])
+    })
   })
 
   describe('getFilesWithCoverage', function () {
@@ -248,6 +255,16 @@ describe('Util', function () {
       await expect(parseToReport('<root></root>')).rejects.toThrow(
         'Invalid report'
       )
+    })
+
+    it('keeps packages of nested groups', async () => {
+      const report = await getReport(
+        './__tests__/__fixtures__/reports/group/group_with_nested_package.xml'
+      )
+      const child = report.group?.[0].group?.[0]
+      expect(child?.name).toEqual('Child')
+      expect(child?.package?.[0].name).toEqual('com/example')
+      expect(child?.package?.[0].sourcefile?.[0].name).toEqual('Nested.java')
     })
   })
 })

@@ -1,6 +1,6 @@
 import {JacocoFile} from './models/jacoco.js'
 import parser from 'xml2js'
-import {Counter, Package, Report} from './models/jacoco-types.js'
+import {Counter, Group, Package, Report} from './models/jacoco-types.js'
 
 export function debug(obj: object): string {
   return JSON.stringify(obj, null, 4)
@@ -21,6 +21,8 @@ export function getChangedLines(patch: string | undefined): number[] {
           let bX = parseInt(diffGroup[2])
 
           for (const line of group) {
+            // "\ No newline at end of file" is a marker, not a line of the file
+            if (line.startsWith('\\')) continue
             bX++
 
             if (line.startsWith('+')) {
@@ -137,6 +139,15 @@ function getPackage(obj: any): Package[] {
   }))
 }
 
+function getGroup(obj: any): Group[] {
+  return obj.group?.map((grp: any) => ({
+    name: grp['$'].name,
+    group: getGroup(grp),
+    package: getPackage(grp),
+    counter: getCounter(grp),
+  }))
+}
+
 function getCounter(obj: any): Counter[] {
   return obj.counter?.map((c: any) => ({
     type: c['$'].type,
@@ -153,15 +164,7 @@ function convertObjToReport(obj: any): Report {
       start: Number(si['$'].start),
       dump: Number(si['$'].dump),
     })),
-    group: obj.group?.map((grp: any) => ({
-      name: grp['$'].name,
-      group: grp.group?.map((g: any) => ({
-        name: g['$'].name,
-        counter: getCounter(g),
-      })),
-      package: getPackage(grp),
-      counter: getCounter(grp),
-    })),
+    group: getGroup(obj),
     package: getPackage(obj),
     counter: getCounter(obj),
   }

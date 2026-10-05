@@ -7,6 +7,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -23,7 +27,7 @@ jobs:
 
       - name: Install
         run: |
-          npm install
+          npm ci
 
       - name: Check format
         run: |
@@ -36,3 +40,95 @@ jobs:
       - name: Run unit tests
         run: |
           npm test
+
+  # Failsafe that keeps the committed bundle the action runs from in sync with
+  # main: rebuilds dist after each change to main and commits it if it differs,
+  # covering Dependabot PRs (which cannot rebuild it) and a forgotten rebuild.
+  # Dependabot merges are pushes by GITHUB_TOKEN, which start no workflow run,
+  # so the merge job dispatches this workflow on main instead.
+  rebuild-dist:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only on main: a dispatch on another branch would push that branch to main
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    # Only the newest main commit needs a bundle
+    concurrency:
+      group: rebuild-dist
+      cancel-in-progress: true
+    permissions:
+      contents: write
+    steps:
+      # The write token is not stored by checkout and is only given to the push
+      # step, so dependency code run by the build cannot use it
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build
+        run: |
+          npm ci --ignore-scripts
+          npm run package
+
+      # A push with GITHUB_TOKEN does not start another workflow run, so this
+      # cannot loop. The push is rejected if main moved on in the meantime; the
+      # run for the newer commit then rebuilds instead.
+      - name: Commit and push dist
+        run: |
+          if git diff --quiet dist/; then
+            echo 'dist is up to date'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Rebuild dist' dist/
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Runs only after the build passes, as main has no branch protection to wait for it
+  dependabot-auto-merge:
+    needs: build
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Approve
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge (squash)
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The merge above is a push by GITHUB_TOKEN, which starts no workflow run
+      - name: Rebuild dist on main
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh workflow run check.yml --ref main
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

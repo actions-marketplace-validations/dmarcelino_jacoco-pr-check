@@ -60,6 +60,19 @@ describe('getCoverageStatus', function () {
     }
     expect(getCoverageStatus(withCounts, MIN).difference).toBe(-1)
   })
+
+  it('has no coverage drop for counters measured in other units than changed lines', function () {
+    const withCounts: Project = {
+      modules: [],
+      isMultiModule: false,
+      overall: {covered: 90, missed: 10, percentage: 90},
+      changed: {covered: 40, missed: 10, percentage: 80},
+    }
+    expect(getCoverageStatus(withCounts, MIN, 'METHOD').difference).toBeNull()
+    expect(
+      getCoverageStatus(withCounts, MIN, 'COMPLEXITY').difference
+    ).toBeNull()
+  })
 })
 
 describe('getCheckTitle', function () {

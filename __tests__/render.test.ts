@@ -66,7 +66,6 @@ describe('Render', function () {
           `|Overall Project|35.25% **\`-17.21%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|
@@ -89,7 +88,6 @@ describe('Render', function () {
           `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|
@@ -112,7 +110,6 @@ describe('Render', function () {
           `|Overall Project|35.25% **\`-17.21%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:x:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|
@@ -135,7 +132,6 @@ describe('Render', function () {
           `|Overall Project|35.25% **\`-17.21%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|38.24%|:green_apple:|
-<br>
 
 |File|Coverage||
 |:-|:-|:-:|
@@ -162,7 +158,6 @@ describe('Render', function () {
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|
@@ -199,7 +194,6 @@ describe('Render', function () {
           `|Overall Project|20.41% **\`-19.39%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|
@@ -236,7 +230,6 @@ describe('Render', function () {
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|
@@ -273,7 +266,6 @@ describe('Render', function () {
           `|Overall Project|20.41% **\`-19.39%\`**|:x:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:green_apple:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|
@@ -344,7 +336,6 @@ describe('Render', function () {
           `|Overall Project|20.41% **\`-19.39%\`**|:green_apple:|
 |:-|:-|:-:|
 |Changed lines|7.32%|:x:|
-<br>
 
 |Module|Coverage||
 |:-|:-|:-:|
@@ -483,6 +474,21 @@ describe('Render', function () {
         )
         expect(report).not.toContain('Lines missed')
         expect(report).toContain('|File|Coverage||')
+      })
+    })
+
+    describe('coverage delta', function () {
+      it('is not rendered for METHOD and COMPLEXITY counters', function () {
+        for (const type of ['METHOD', 'COMPLEXITY'] as const) {
+          const report = render.getReport(
+            PROJECT.MULTI_MODULE,
+            {overall: 30, changed: 60},
+            emoji,
+            false,
+            type
+          )
+          expect(report).not.toContain('`-')
+        }
       })
     })
 
