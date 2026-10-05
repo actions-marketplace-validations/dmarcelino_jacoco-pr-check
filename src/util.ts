@@ -21,6 +21,8 @@ export function getChangedLines(patch: string | undefined): number[] {
           let bX = parseInt(diffGroup[2])
 
           for (const line of group) {
+            // "\ No newline at end of file" is a marker, not a line of the file
+            if (line.startsWith('\\')) continue
             bX++
 
             if (line.startsWith('+')) {
