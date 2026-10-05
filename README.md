@@ -1,4 +1,4 @@
-# jacoco-pr-check
+# JaCoCo PR Check
 
 [![Tests](https://github.com/dmarcelino/jacoco-pr-check/actions/workflows/check.yml/badge.svg)](https://github.com/dmarcelino/jacoco-pr-check/actions/workflows/check.yml)
 
